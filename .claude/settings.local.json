@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git add *)",
       "Bash(git commit -m 'docs: 完善 README，加入 H 值 / L 信号 / 吸引子三因子模型说明 *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git commit -m 'docs: 更正 L 信号定义为 Lyapunov 指数，重写模型流程与融合公式 *)"
     ]
   }
 }
