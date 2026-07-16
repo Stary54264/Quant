@@ -19,7 +19,8 @@
       "Bash(/c/Users/86133/AppData/Local/Programs/Python/Python311/python.exe -m pip install numpy pandas matplotlib yfinance scipy -i https://pypi.tuna.tsinghua.edu.cn/simple)",
       "Bash(/c/Users/86133/AppData/Local/Programs/Python/Python311/python.exe tests/test_hurst.py)",
       "Bash(git rm *)",
-      "Bash(git commit -m 'feat\\(factor\\): 添加 H 值因子 \\(RS/DFA/Wavelet/Ensemble/rolling\\) 与单元测试 *)"
+      "Bash(git commit -m 'feat\\(factor\\): 添加 H 值因子 \\(RS/DFA/Wavelet/Ensemble/rolling\\) 与单元测试 *)",
+      "Bash(git commit -m 'chore: 移除误提交的 __pycache__（已被 .gitignore 覆盖） *)"
     ]
   }
 }
