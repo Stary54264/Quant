@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+# 环境 / IDE
+.env
+.vscode/
+.idea/
+
+# 数据 / 报告
+data/raw/
+data/processed/
+reports/
+*.parquet
+*.csv
+*.h5
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# Claude 本地配置（含个人权限白名单）
+.claude/settings.local.json
