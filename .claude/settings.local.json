@@ -19,7 +19,19 @@
       "Bash(/c/Users/86133/AppData/Local/Programs/Python/Python311/python.exe -m pip install numpy pandas matplotlib yfinance scipy -i https://pypi.tuna.tsinghua.edu.cn/simple)",
       "Bash(/c/Users/86133/AppData/Local/Programs/Python/Python311/python.exe tests/test_hurst.py)",
       "Bash(git rm *)",
-      "Bash(git commit -m 'feat\\(factor\\): 添加 H 值因子 \\(RS/DFA/Wavelet/Ensemble/rolling\\) 与单元测试 *)"
+      "Bash(git commit -m 'feat\\(factor\\): 添加 H 值因子 \\(RS/DFA/Wavelet/Ensemble/rolling\\) 与单元测试 *)",
+      "Read(//Users/stary/.claude/skills/**)",
+      "Bash(find /Users/stary/.claude -type d -name \"factor-writer\" 2>/dev/null; find /Users/stary/Desktop/Quant/.claude -type d 2>/dev/null)",
+      "Read(//Users/stary/.claude/**)",
+      "Bash(mv /Users/stary/Desktop/Quant/.claude/skills/factor-writer/assets/000905.SH.csv /Users/stary/Desktop/Quant/.claude/skills/factor-writer/assets/000905_20140102_20250630.csv && ls /Users/stary/Desktop/Quant/.claude/skills/factor-writer/assets/)",
+      "Read(//private/tmp/**)",
+      "Bash(python -c ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit --no-gpg-sign -m ' *)"
+    ],
+    "additionalDirectories": [
+      "/Users/stary/Desktop/Quant/.claude/skills/factor-writer/assets"
     ]
   }
 }
