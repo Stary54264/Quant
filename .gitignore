@@ -18,7 +18,6 @@ data/raw/
 data/processed/
 reports/
 *.parquet
-*.csv
 *.h5
 
 # Jupyter
