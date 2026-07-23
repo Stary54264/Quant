@@ -26,3 +26,6 @@ reports/
 # 系统
 .DS_Store
 Thumbs.db
+
+# Claude 本地配置（含个人权限白名单，因机而异，不入库）
+.claude/settings.local.json
