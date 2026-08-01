@@ -18,7 +18,6 @@ data/raw/
 data/processed/
 reports/
 *.parquet
-*.csv
 *.h5
 
 # Jupyter
@@ -28,5 +27,5 @@ reports/
 .DS_Store
 Thumbs.db
 
-# Claude 本地配置（含个人权限白名单）
+# Claude 本地配置（含个人权限白名单，因机而异，不入库）
 .claude/settings.local.json
