@@ -7,8 +7,6 @@ from scipy.stats import norm, skew, kurtosis
 
 # 年化无风险利率常数
 RISK_FREE_RATE = 0.03
-# Euler-Mascheroni 常数，用于 DSR 中期望最大值的近似
-_EULER_GAMMA = 0.5772156649015329
 
 
 def annualized_sharpe(returns: np.ndarray, subtract_rf: bool = True) -> float:
@@ -93,7 +91,7 @@ def deflated_sharpe(
         sigma_sr = 1.0 / np.sqrt(t)
         z1 = norm.ppf(1 - 1.0 / n_trials)
         z2 = norm.ppf(1 - 1.0 / (n_trials * np.e))
-        sr0 = sigma_sr * ((1 - _EULER_GAMMA) * z1 + _EULER_GAMMA * z2)
+        sr0 = sigma_sr * ((1 - np.euler_gamma) * z1 + np.euler_gamma * z2)
 
     z = (sr_hat - sr0) * np.sqrt(t - 1) / se_factor
     return float(norm.cdf(z))
