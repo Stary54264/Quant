@@ -72,8 +72,8 @@ def max_drawdown_duration(returns: np.ndarray) -> int:
     nav = (1 + returns).cumprod()
     n = len(nav)
     running_max = np.maximum.accumulate(nav)
-    # 标记每个创新高的位置（首日视为新高），向前填充最近一次新高的索引
-    new_peak = np.concatenate([[True], nav[1:] > running_max[:-1]])
+    # 标记每个创新高的位置（首日视为新高，回到前高即重置），向前填充最近一次新高的索引
+    new_peak = np.concatenate([[True], nav[1:] >= running_max[:-1]])
     peak_idx = np.where(new_peak, np.arange(n), -1)
     last_peak = np.maximum.accumulate(peak_idx)
     durations = np.arange(n) - last_peak
