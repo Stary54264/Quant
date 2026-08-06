@@ -31,14 +31,18 @@
 1. 用全部历史数据跑回测，保存每日仓位 → 文件 A；
 2. 删掉最近 N 天（N 取 10~100）再跑一次 → 文件 B；
 3. 把文件 A 也截掉同样的最近 N 天，使 A、B 末日和长度一致；
-4. 比较 A、B 每个交易日的仓位，**必须完全相同**。出现差异就说明程序在第 T−N 天用到了未来数据，必须定位修正。本仓库 [scripts/test_strategy.py](scripts/test_strategy.py) 已实现该截断测试（`test_lookahead_bias`）。
+4. 比较 A、B 每个交易日的仓位，**必须完全相同**。出现差异就说明程序在第 T−N 天用到了未来数据，必须定位修正。
+
+本仓库 [scripts/test_strategy.py](scripts/test_strategy.py) 已实现该截断测试（`test_lookahead_bias`）。
 
 **3. 数据窥探偏差（Data-snooping bias）——限制参数个数 + DSR**
 
 在同一份数据上反复调参/调定性规则（开盘还是收盘成交、是否隔夜持仓、大盘还是中盘股等），会把噪声当成 Alpha，回测表现虚高。缓解手段：
 
 - **自由参数不超过 5 个**（含进出场阈值、持仓周期、均线回看期等）；更好的做法是在滚动窗口内动态优化参数，或对多组参数取平均，减少对单一最优参数的依赖；
-- 用 **Deflated Sharpe Ratio（DSR, Bailey et al., 2014）** 校正"调了这么多次才得到这个 Sharpe"的选择偏差——调整次数越多，真实（预期实盘）Sharpe 相对回测 Sharpe 被压缩得越狠。本仓库 [scripts/evaluate_strategy.py](scripts/evaluate_strategy.py) 已实现 DSR（`deflated_sharpe`）。
+- 用 **Deflated Sharpe Ratio（DSR, Bailey et al., 2014）** 校正"调了这么多次才得到这个 Sharpe"的选择偏差——调整次数越多，真实（预期实盘）Sharpe 相对回测 Sharpe 被压缩得越狠。
+
+本仓库 [scripts/evaluate_strategy.py](scripts/evaluate_strategy.py) 已实现 DSR（`deflated_sharpe`）。
 
 **4. 样本量要与目标 Sharpe 匹配**
 
