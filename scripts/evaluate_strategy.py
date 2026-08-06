@@ -34,8 +34,8 @@ def max_drawdown(returns: np.ndarray) -> float:
     """计算最大回撤。
 
     先由日收益率累乘得到净值曲线，再对每个时点取此前的净值最大值
-    （running max），当日回撤 = max(running_max - 当前净值, 0)，
-    返回回撤序列的最大值（正数，表示最大跌幅幅度）。
+    （running max），当日回撤 = max((running_max - 当前净值) / running_max, 0)，
+    返回回撤序列的最大值（正数，表示最大跌幅比例）。
 
     Parameters
     ----------
@@ -45,11 +45,11 @@ def max_drawdown(returns: np.ndarray) -> float:
     Returns
     -------
     float
-        最大回撤幅度（非负，0.20 表示从峰值最多回撤 20%）。
+        最大回撤比例（非负，0.20 表示从峰值最多回撤 20%）。
     """
     nav = (1 + returns).cumprod()
     running_max = np.maximum.accumulate(nav)
-    drawdowns = np.maximum(running_max - nav, 0)
+    drawdowns = np.maximum((running_max - nav) / running_max, 0)
     return drawdowns.max()
 
 
