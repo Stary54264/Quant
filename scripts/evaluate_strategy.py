@@ -51,3 +51,30 @@ def max_drawdown(returns: np.ndarray) -> float:
     running_max = np.maximum.accumulate(nav)
     drawdowns = np.maximum(running_max - nav, 0)
     return drawdowns.max()
+
+
+def max_drawdown_duration(returns: np.ndarray) -> int:
+    """计算最长回撤持续时间（交易日数）。
+
+    对每个时点，统计其此前（含当日）最近一次净值创历史新高距今天的天数，
+    取该序列的最大值。
+
+    Parameters
+    ----------
+    returns : np.ndarray
+        每日策略收益率（小数，0.01 表示 1%），1D array。
+
+    Returns
+    -------
+    int
+        最长回撤持续的交易日数。
+    """
+    nav = (1 + returns).cumprod()
+    n = len(nav)
+    running_max = np.maximum.accumulate(nav)
+    # 标记每个创新高的位置（首日视为新高），向前填充最近一次新高的索引
+    new_peak = np.concatenate([[True], nav[1:] > running_max[:-1]])
+    peak_idx = np.where(new_peak, np.arange(n), -1)
+    last_peak = np.maximum.accumulate(peak_idx)
+    durations = np.arange(n) - last_peak
+    return int(durations.max())
