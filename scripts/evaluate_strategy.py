@@ -78,8 +78,12 @@ def deflated_sharpe(
     g3 = skew(r, bias=False)
     g4 = kurtosis(r, bias=False, fisher=False)
 
-    # SR 估计量的非正态标准误修正项
-    se_factor = np.sqrt(1 - g3 * sr_hat + (g4 - 1) / 4 * sr_hat ** 2)
+    # SR 估计量的非正态标准误修正项。
+    # 理论上根号内为正，但有限样本下偏度/峰度的无偏估计可能出现极端值
+    # （如 sr_hat < 0 且 g3 > 0 时 -g3*sr_hat 为负），将其截断到 1e-8 以上，
+    # 避免 sqrt(负数) 产生 NaN / RuntimeWarning。
+    se_squared = 1 - g3 * sr_hat + (g4 - 1) / 4 * sr_hat ** 2
+    se_factor = np.sqrt(np.maximum(se_squared, 1e-8))
 
     if n_trials <= 1:
         sr0 = 0.0
