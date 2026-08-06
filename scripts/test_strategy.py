@@ -55,12 +55,13 @@ def test_lookahead_bias(strategy, data: pd.DataFrame, n_days: int = 10) -> dict:
     pos_a = pos_a.iloc[:-n_days]
 
     # 4. 逐日比较（按索引对齐，避免长度/日期错位）
-    if isinstance(pos_a, pd.DataFrame) or isinstance(pos_b, pd.DataFrame):
-        diff_mask = ~(pos_a == pos_b).all(axis=1)
+    # 逐元素相等；两边同为 NaN 也视为一致（NaN == NaN 在 pandas 中为 False）
+    equal = (pos_a == pos_b) | (pos_a.isna() & pos_b.isna())
+    if getattr(equal, "ndim", 1) == 2:
+        # DataFrame：任意一只资产当日不一致，即判该日存在差异
+        diff_mask = ~equal.all(axis=1)
     else:
-        diff_mask = (pos_a != pos_b)
-        # NaN != NaN 在 pandas 中为 True，但两边同为 NaN 应视为一致
-        diff_mask = diff_mask & ~(pos_a.isna() & pos_b.isna())
+        diff_mask = ~equal
 
     mismatch_dates = pos_a.index[diff_mask]
     return {
