@@ -28,7 +28,7 @@ def annualized_sharpe(returns: np.ndarray, subtract_rf: bool = True) -> float:
         年化夏普 = (mean(daily) - rf_daily) / std(daily) * sqrt(252)
     """
     mean = returns.mean() - subtract_rf * RISK_FREE_RATE / 252
-    std = returns.std()
+    std = np.std(returns, ddof=1)
 
     return mean / std * np.sqrt(252)
 
@@ -70,9 +70,10 @@ def deflated_sharpe(
     r = np.asarray(returns, dtype=float)
     t = len(r)
 
-    # 日频（非年化）Sharpe，与 annualized_sharpe 同口径（ddof=0）
+    # 日频（非年化）Sharpe，与 annualized_sharpe 同口径（样本标准差 ddof=1，
+    # 与下方无偏偏度/峰度 bias=False 的设定一致）
     excess_mean = r.mean() - subtract_rf * RISK_FREE_RATE / 252
-    sr_hat = excess_mean / r.std()
+    sr_hat = excess_mean / np.std(r, ddof=1)
 
     # 日频偏度与（非超额）峰度
     g3 = skew(r, bias=False)
