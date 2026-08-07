@@ -48,7 +48,7 @@ $$\text{cost}_t = c \cdot \sum_i \left| w_{i,t} - w_{i,t-1} \right|$$
 
 本仓库 [scripts/test_strategy.py](scripts/test_strategy.py) 已实现该截断测试（`test_lookahead_bias`）。
 
-**3. 数据窥探偏差（Data-snooping bias）——限制参数个数 + DSR**
+**4. 数据窥探偏差（Data-snooping bias）——限制参数个数 + DSR**
 
 在同一份数据上反复调参/调定性规则（开盘还是收盘成交、是否隔夜持仓、大盘还是中盘股等），会把噪声当成 Alpha，回测表现虚高。缓解手段：
 
@@ -57,7 +57,7 @@ $$\text{cost}_t = c \cdot \sum_i \left| w_{i,t} - w_{i,t-1} \right|$$
 
 本仓库 [scripts/evaluate_strategy.py](scripts/evaluate_strategy.py) 已实现 DSR（`deflated_sharpe`）。
 
-**4. 样本量要与目标 Sharpe 匹配**
+**5. 样本量要与目标 Sharpe 匹配**
 
 回测 Sharpe 只是对"真实 Sharpe"的有限样本估计。Bailey et al. (2012) 给出达到统计置信所需的最少数据（日频，252 天/年）：
 
