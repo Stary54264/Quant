@@ -69,7 +69,7 @@ $$\text{cost}_t = c \cdot \sum_i \left| w_{i,t} - w_{i,t-1} \right|$$
 
 结论：若想有信心地说策略真实 Sharpe 能到 1，回测 Sharpe 至少 1.5 且需要约 10.87 年日频数据。**回测 Sharpe 越高，所需样本越短**。这一标准同样适用于样本外（纸面交易）的长度。
 
-**5. 敏感性分析（Sensitivity analysis）**
+**6. 敏感性分析（Sensitivity analysis）**
 
 在训练集和测试集上都已拿到合理表现后，逐个小幅变动参数或模型的定性设置，观察绩效变化：
 
