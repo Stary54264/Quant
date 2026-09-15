@@ -26,6 +26,7 @@ import io
 import json
 import logging
 import os
+import random
 import sys
 import threading
 import time
@@ -154,8 +155,8 @@ def query_with_retry(query_fn, what: str) -> pd.DataFrame:
         except Exception as exc:  # 连接重置/超时等
             last_err = repr(exc)
         if attempt < MAX_TRIES:
-            backoff = min(5 * attempt, 25)  # 5s, 10s...
-            logger.warning("[%s] 第 %d 次尝试失败：%s；%ds 后重试",
+            backoff = (10, 30)[attempt - 1] * random.uniform(0.8, 1.2)
+            logger.warning("[%s] 第 %d 次尝试失败：%s；%.0fs 后重试",
                            what, attempt, last_err, backoff)
             time.sleep(backoff)
             _reconnect()
@@ -208,6 +209,7 @@ def stock_codes(universe: pd.DataFrame) -> list[str]:
 # 步骤 2：逐标的下载（进程 worker）
 # ----------------------------------------------------------------------------
 _WORKER_READY = False
+_FAIL_STREAK = 0  # 本 worker 连续“整只标的 3 轮全败”的次数（熔断器状态）
 
 
 def _worker_init() -> None:
@@ -233,7 +235,7 @@ def download_one(code: str) -> tuple[str, str, int]:
     if path.exists():
         return code, "skip", 0
 
-    global _WORKER_READY
+    global _WORKER_READY, _FAIL_STREAK
     if not _WORKER_READY:
         _WORKER_READY = _login()
 
@@ -246,11 +248,19 @@ def download_one(code: str) -> tuple[str, str, int]:
         tmp = path.with_suffix(".parquet.tmp")
         df.to_parquet(tmp, index=False, compression="snappy")
         os.replace(tmp, path)
+        globals()["_FAIL_STREAK"] = 0  # 任一成功即清零熔断计数
         return code, ("ok" if len(df) else "empty"), len(df)
     except Exception as exc:
         logger.error("下载失败 %s：%s", code, exc)
         path.with_suffix(".parquet.tmp").unlink(missing_ok=True)
         path.unlink(missing_ok=True)
+        # 熔断冷却：连续失败往往意味着服务端限流窗口，此时继续猛打只会全部失败；
+        # 逐次加长冷却（60s,120s,... 封顶 5 分钟，±20% 抖动），成功一只即解除。
+        globals()["_FAIL_STREAK"] += 1
+        cool = min(60 * _FAIL_STREAK, 300) * random.uniform(0.8, 1.2)
+        logger.warning("worker 连续失败 %d 只，冷却 %.0fs 后再继续", _FAIL_STREAK, cool)
+        time.sleep(cool)
+        _reconnect()
         return code, "failed", 0
 
 
