@@ -10,7 +10,6 @@
 """
 
 from pathlib import Path
-from typing import Literal
 
 import duckdb
 import pandas as pd
@@ -26,7 +25,7 @@ def query(
     code: str,
     start_date: str,
     end_date: str,
-    kind: Literal["stock", "index"] = "stock",
+    kind: str = "stock",
 ) -> pd.DataFrame:
     """读取单只标的在 [start_date, end_date] 内的日线数据。
 
