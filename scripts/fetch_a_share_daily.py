@@ -89,20 +89,35 @@ logger = logging.getLogger("fetch_a_share")
 # ----------------------------------------------------------------------------
 # baostock 会话与重试
 # ----------------------------------------------------------------------------
+def _baostock_socket():
+    """baostock 的模块级连接 socket（util.socketutil.send_msg 用它收数）。"""
+    import baostock.common.context as bctx
+    return getattr(bctx, "default_socket", None)
+
+
 def _login() -> bool:
-    """登录 baostock（吞掉其自带的 print 噪音）。"""
+    """登录 baostock（吞掉其自带的 print 噪音），并给底层 socket 装超时，
+    使卡死的 recv 最多 QUERY_TIMEOUT 秒后自行抛 socket.timeout。"""
     try:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             lg = bs.login()
-        return lg.error_code == "0"
+        if lg.error_code != "0":
+            return False
+        sock = _baostock_socket()
+        if sock is not None:
+            sock.settimeout(QUERY_TIMEOUT)
+        return True
     except Exception:
         return False
 
 
 def _logout() -> None:
+    """拆除连接：不调用会走网络、可能阻塞的 bs.logout()，直接关闭底层 socket；
+    下次 login 会 connect() 出新的 socket。"""
     with contextlib.suppress(Exception):
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            bs.logout()
+        sock = _baostock_socket()
+        if sock is not None:
+            sock.close()
 
 
 def _reconnect() -> None:
