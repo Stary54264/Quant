@@ -5,7 +5,7 @@
 import pandas as pd
 
 
-def ema(close: pd.Series, span: int = 20) -> pd.Series:
+def ema(close: pd.Series, span: int) -> pd.Series:
     """计算收盘价的 N 日指数移动平均线。
 
     递推形式（``adjust=False``，与常见行情软件口径一致）：
@@ -21,7 +21,7 @@ def ema(close: pd.Series, span: int = 20) -> pd.Series:
     ----------
     close : pd.Series
         收盘价序列（按日期升序）。
-    span : int, default 20
+    span : int
         EMA 窗口长度。
 
     Returns
