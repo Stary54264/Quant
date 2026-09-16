@@ -110,9 +110,14 @@ class AShareDB:
         df = self.index("沪深300", start, end)[["date"]].drop_duplicates()
         return pd.DatetimeIndex(sorted(df["date"]))
 
-    def universe(self) -> pd.DataFrame:
-        """证券清单（含退市日期、在市/退市状态），用于构造无幸存者偏差的样本。"""
-        return pd.read_csv(self.data_dir / "stock_basic.csv", dtype=str)
+    def tradeable_codes(self, day: str) -> list[str]:
+        """某历史时点真实可交易的股票代码（当日有行情记录；含此后退市的股票，
+        不含当日停牌股票）。"""
+        rows = self.con.execute(
+            "SELECT DISTINCT code FROM read_parquet($path) WHERE date = $d ORDER BY code",
+            {"path": str(self.stocks_path), "d": pd.Timestamp(day)},
+        ).fetchall()
+        return [r[0] for r in rows]
 
 
 def _cli() -> None:
