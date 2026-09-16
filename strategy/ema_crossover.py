@@ -12,6 +12,8 @@
 
 import pandas as pd
 
+from factor.ema import ema
+
 
 def ema_crossover(data: pd.DataFrame, span: int = 20) -> pd.Series:
     """收盘价上穿 EMA 则次日持仓，下穿则次日空仓。
@@ -31,10 +33,10 @@ def ema_crossover(data: pd.DataFrame, span: int = 20) -> pd.Series:
         因此仓位序列相对信号整体滞后一日，无前视偏差。
     """
     close = data["close"]
-    ema = close.ewm(span=span, adjust=False).mean()
+    ema_line = ema(close, span)
 
     # t 日收盘时收盘价是否位于 EMA 上方
-    above = close > ema
+    above = close > ema_line
     # t+1 日仓位 = t 日收盘的多空状态：信号滞后一日生效
     position = above.shift(1, fill_value=False).astype(int)
     position.name = "position"
