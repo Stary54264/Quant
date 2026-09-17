@@ -23,10 +23,11 @@ import streamlit as st
 from generate_report import (
     BacktestInputError,
     build_report_markdown,
+    generate_report,
     list_strategies,
     report_filename,
-    run_analysis,
 )
+from report_pdf import markdown_to_pdf
 
 # 数据集覆盖的交易日范围（data/backtest/a_share，2006–2025 固定快照）
 MIN_DATE = date(2006, 1, 4)
@@ -77,17 +78,17 @@ def reset_form() -> None:
 
 
 @st.dialog("回测报告", width="large")
-def show_report(markdown: str, filename: str) -> None:
-    """弹窗中渲染报告，并提供下载与返回初始界面。"""
+def show_report(markdown: str, pdf_bytes: bytes, pdf_filename: str) -> None:
+    """弹窗中渲染报告，提供 PDF 下载与返回初始界面。"""
     st.markdown(markdown)
     st.divider()
     col_dl, col_back = st.columns(2)
     with col_dl:
         st.download_button(
-            "下载报告 (.md)",
-            data=markdown,
-            file_name=filename,
-            mime="text/markdown",
+            "下载报告 (PDF)",
+            data=pdf_bytes,
+            file_name=pdf_filename,
+            mime="application/pdf",
             use_container_width=True,
         )
     with col_back:
@@ -108,14 +109,16 @@ if st.button("生成报告", type="primary"):
     else:
         try:
             with st.spinner("回测运行中，请稍候…"):
-                analysis = run_analysis(
+                # 与 CLI 完全一致：分析并把 Markdown 报告存入对应策略文件夹
+                _, analysis = generate_report(
                     code.strip().lower(),
                     start_date.isoformat(),
                     end_date.isoformat(),
                     strategy_name,
                 )
                 markdown = build_report_markdown(analysis)
-                filename = report_filename(analysis)
-            show_report(markdown, filename)
+                pdf_bytes = markdown_to_pdf(markdown)
+                pdf_filename = report_filename(analysis).removesuffix(".md") + ".pdf"
+            show_report(markdown, pdf_bytes, pdf_filename)
         except BacktestInputError as exc:
             st.error(str(exc))

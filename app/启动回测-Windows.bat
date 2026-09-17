@@ -39,7 +39,7 @@ if not defined PY (
 )
 
 rem 3. Install dependencies on first run
-%PY% -c "import streamlit, duckdb, pyarrow, pandas, numpy, scipy" >nul 2>nul
+%PY% -c "import streamlit, duckdb, pyarrow, pandas, numpy, scipy, reportlab" >nul 2>nul
 if errorlevel 1 (
   echo Installing dependencies on first run: pip install -r requirements.txt
   %PY% -m pip install -r requirements.txt

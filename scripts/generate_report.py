@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """通用回测报告生成：给定标的、区间与策略，调用评价/检验函数生成 Markdown 报告。
 
-既可作为模块被 UI 直接调用（返回报告字符串），也可在命令行运行：
+既可作为模块被 UI 直接调用，也可在命令行运行：
 
     python3 scripts/generate_report.py sh.600000 2006-01-01 2025-12-31 ema55
-    python3 scripts/generate_report.py sh.600000 2006-01-01 2025-12-31 ema55 -o report.md
 
-不带 -o 时报告打印到标准输出；带 -o 时写入指定文件。
+报告 Markdown 一律保存到对应策略文件夹
+``strategy/<策略名>/<代码>_<策略>_<首日>_<末日>.md``，CLI 与 app 行为一致。
 
 策略发现约定：``strategy/<策略名>/`` 子文件夹的 ``__init__.py`` 暴露
 ``generate_position(data)`` 统一入口，并可提供 ``STRATEGY_RULES`` 元信息。
@@ -183,25 +183,38 @@ def build_report_markdown(a: dict) -> str:
     return "\n".join(lines)
 
 
+def report_filename(a: dict) -> str:
+    """生成报告文件名：代码_策略_首日_末日.md。"""
+    result = a["result"]
+    return (
+        f"{a['code']}_{a['strategy_name']}_"
+        f"{result['date'].iloc[0]}_{result['date'].iloc[-1]}.md"
+    )
+
+
+def save_report(a: dict) -> Path:
+    """把报告 Markdown 保存到对应策略文件夹，返回文件路径。
+
+    同一标的/区间/策略重复运行会覆盖同一份文件。
+    """
+    out_dir = STRATEGY_DIR / a["strategy_name"]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / report_filename(a)
+    path.write_text(build_report_markdown(a), encoding="utf-8")
+    return path
+
+
 def generate_report(
     code: str,
     start_date: str,
     end_date: str,
     strategy_name: str,
     commission: float = DEFAULT_COMMISSION,
-) -> str:
-    """通用入口：接收标的、区间、策略名，返回 Markdown 报告字符串。"""
+) -> tuple[Path, dict]:
+    """通用入口：接收标的、区间、策略名，保存 Markdown 报告并返回 (路径, 分析结果)。"""
     analysis = run_analysis(code, start_date, end_date, strategy_name, commission)
-    return build_report_markdown(analysis)
-
-
-def report_filename(a: dict) -> str:
-    """生成下载用文件名：代码_策略_首日_末日.md。"""
-    result = a["result"]
-    return (
-        f"{a['code']}_{a['strategy_name']}_"
-        f"{result['date'].iloc[0]}_{result['date'].iloc[-1]}.md"
-    )
+    path = save_report(analysis)
+    return path, analysis
 
 
 def main() -> None:
@@ -210,17 +223,10 @@ def main() -> None:
     parser.add_argument("start_date", help="起始日期 YYYY-MM-DD")
     parser.add_argument("end_date", help="结束日期 YYYY-MM-DD")
     parser.add_argument("strategy", help="策略名（strategy/ 下的子文件夹名）")
-    parser.add_argument("-o", "--output", help="报告写入路径；缺省打印到标准输出")
     args = parser.parse_args()
 
-    markdown = generate_report(args.code, args.start_date, args.end_date, args.strategy)
-    if args.output:
-        out = Path(args.output)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(markdown, encoding="utf-8")
-        print(f"报告已写入 {out}")
-    else:
-        print(markdown)
+    path, _ = generate_report(args.code, args.start_date, args.end_date, args.strategy)
+    print(f"报告已写入 {path}")
 
 
 if __name__ == "__main__":

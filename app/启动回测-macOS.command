@@ -29,7 +29,7 @@ else
 fi
 
 # 3. 缺依赖时自动安装
-if ! "$PY" -c "import streamlit, duckdb, pyarrow, pandas, numpy, scipy" 2>/dev/null; then
+if ! "$PY" -c "import streamlit, duckdb, pyarrow, pandas, numpy, scipy, reportlab" 2>/dev/null; then
   echo "首次运行，正在安装依赖（pip install -r requirements.txt）…"
   "$PY" -m pip install -r requirements.txt || {
     echo "[错误] 依赖安装失败，请手动执行：$PY -m pip install -r requirements.txt"

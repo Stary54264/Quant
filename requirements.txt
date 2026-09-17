@@ -5,6 +5,7 @@ pyarrow==25.0.1
 pandas==2.2.3
 numpy==2.2.6
 scipy==1.15.0
+reportlab==5.0.1
 
 # 仅在重新抓取/更新行情数据时才需要，运行小程序和回测不用装：
 # baostock
