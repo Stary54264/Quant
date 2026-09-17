@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Dummy 策略：收盘价上穿/下穿 N 日 EMA。
+"""Dummy 策略：收盘价上穿/下穿 55 日 EMA。
 
 规则（信号在 t 日收盘确认，t+1 日开盘才调仓）：
-  - 收盘价上穿 EMA：次日买入（满仓持有）
-  - 收盘价下穿 EMA：次日卖出（空仓）
+  - 收盘价上穿 EMA55：次日开盘买入（满仓持有）
+  - 收盘价下穿 EMA55：次日开盘卖出（空仓）
 
 策略函数签名与 scripts/test_strategy.py 的前视偏差检查兼容：
 输入按日期升序的行情 DataFrame，返回与输入行数逐日对齐的每日仓位。
@@ -15,15 +15,15 @@ import pandas as pd
 from factor.ema import ema
 
 
-def ema_crossover(data: pd.DataFrame, span: int = 20) -> pd.Series:
-    """收盘价上穿 EMA 则次日持仓，下穿则次日空仓。
+def ema_crossover(data: pd.DataFrame, span: int = 55) -> pd.Series:
+    """收盘价上穿 EMA55 则次日持仓，下穿则次日空仓。
 
     Parameters
     ----------
     data : pd.DataFrame
         按日期升序排列的日线行情，必须包含 ``close`` 列。
-    span : int, default 20
-        EMA 窗口长度，默认 20 日。
+    span : int, default 55
+        EMA 窗口长度，默认 55 日。
 
     Returns
     -------
