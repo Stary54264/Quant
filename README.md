@@ -6,7 +6,39 @@
 
 | 目录 | 说明 |
 | --- | --- |
-| [scripts/](scripts/) | 策略评价与通用工具脚本。目前包含 [evaluate_strategy.py](scripts/evaluate_strategy.py)，输入日收益率序列，计算年化夏普、Deflated Sharpe（Bailey & López de Prado, 2014）、最大回撤、最长回撤时间等指标。 |
+| [data/](data/) | 回测数据。[data/backtest/a_share/](data/backtest/a_share/) 为 A 股 2006–2025 全市场日线固定快照（含退市股、7 只基准指数，无幸存者偏差），详见其 [README](data/backtest/a_share/README.md)。 |
+| [factor/](factor/) | 因子层：纯因子计算函数，输入价格序列、输出因子序列（如 [ema.py](factor/ema.py) 的指数移动平均线）。 |
+| [strategy/](strategy/) | 策略层：消费因子生成信号与每日目标仓位（如 [ema_crossover.py](strategy/ema_crossover.py)：收盘上穿 EMA 次日买入、下穿次日卖出）。 |
+| [scripts/](scripts/) | 数据查询与策略评价工具：[query_a_share.py](scripts/query_a_share.py) 按代码与时间区间读取日线；[evaluate_strategy.py](scripts/evaluate_strategy.py) 输入日收益率序列计算年化夏普、Deflated Sharpe（Bailey & López de Prado, 2014）、最大回撤、最长回撤时间；[test_strategy.py](scripts/test_strategy.py) 用截断法检测前视偏差。 |
+
+### 回测链路
+
+各层单向依赖，一份策略从数据到绩效的完整流程：
+
+```
+query_a_share.query()                 数据层：date, open/high/low/close, pctChg, ...
+        ↓
+factor.ema()                          因子层：EMA20 序列（因子只算数，不含交易观点）
+        ↓
+strategy.ema_crossover()              策略层：信号 → 每日目标仓位（0/1，信号滞后一日生效）
+        ↓
+position × (pctChg / 100)             回测层：策略日收益 = 当日仓位 × 标的日收益，再累乘得净值
+        ↓
+evaluate_strategy.*                   评价层：Sharpe / DSR / 最大回撤 / 回撤持续时间
+```
+
+```python
+import sys; sys.path.insert(0, "scripts")
+from query_a_share import query
+from strategy.ema_crossover import ema_crossover
+from evaluate_strategy import annualized_sharpe, max_drawdown
+
+data = query("sh.600000", "2006-01-01", "2025-12-31").reset_index(drop=True)
+asset_ret = data["pctChg"] / 100                       # 标的日收益（小数）
+strategy_ret = ema_crossover(data, 20) * asset_ret     # 持仓日吃涨跌，空仓日为 0
+
+print(annualized_sharpe(strategy_ret), max_drawdown(strategy_ret))
+```
 
 > `.claude/` 为 Claude Code 的本地配置与技能（如 factor-writer），不属于策略代码。
 
