@@ -6,11 +6,10 @@
 
 | 目录 | 说明 |
 | --- | --- |
-| [app/](app/) | 界面层：本地网页表单，输入代码、区间与策略后生成并弹窗展示回测报告；内含 macOS 与 Windows 两个双击启动器。 |
-| [backtest/](backtest/) | 回测层：把每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径（已含分红再投资）。 |
+| [app/](app/) | 界面层：本地网页表单，输入代码、区间与策略后生成并弹窗展示回测报告；报告的生成、落盘与 PDF 渲染模块及 macOS / Windows 两个双击启动器均在该目录。 |
+| [backtest/](backtest/) | 回测层：行情查询、回测引擎（每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径，已含分红再投资）、策略评价指标与前视偏差检验。 |
 | [data/](data/) | 回测数据。[data/backtest/a_share/](data/backtest/a_share/) 为 A 股 2006–2025 全市场日线固定快照（含退市股、7 只基准指数，无幸存者偏差），详见其 [README](data/backtest/a_share/README.md)。 |
 | [factor/](factor/) | 因子层：纯因子计算函数，输入价格序列、输出因子序列，不含交易观点。 |
-| [scripts/](scripts/) | 数据查询与策略评价工具：[query_a_share.py](scripts/query_a_share.py) 按代码与时间区间读取日线；[evaluate_strategy.py](scripts/evaluate_strategy.py) 输入日收益率序列计算年化夏普、Deflated Sharpe（Bailey & López de Prado, 2014）、最大回撤、最长回撤时间；[test_strategy.py](scripts/test_strategy.py) 用截断法检测前视偏差。 |
 | [strategy/](strategy/) | 策略层：消费因子生成信号与每日目标仓位，信号滞后一日生效。每个策略单独一个子文件夹，内含策略代码与回测报告。 |
 
 ### 回测链路
@@ -86,7 +85,7 @@
 3. 把文件 A 也截掉同样的最近 N 天，使 A、B 末日和长度一致；
 4. 比较 A、B 每个交易日的仓位，**必须完全相同**。出现差异就说明程序在第 T−N 天用到了未来数据，必须定位修正。
 
-本仓库 [scripts/test_strategy.py](scripts/test_strategy.py) 已实现该截断测试（`test_lookahead_bias`）。
+本仓库 [backtest/test_strategy.py](backtest/test_strategy.py) 已实现该截断测试（`test_lookahead_bias`）。
 
 **4. 数据窥探偏差（Data-snooping bias）——限制参数个数 + DSR**
 
@@ -95,7 +94,7 @@
 - **自由参数不超过 5 个**（含进出场阈值、持仓周期、均线回看期等）；更好的做法是在滚动窗口内动态优化参数，或对多组参数取平均，减少对单一最优参数的依赖；
 - 用 **Deflated Sharpe Ratio（DSR, Bailey et al., 2014）** 校正"调了这么多次才得到这个 Sharpe"的选择偏差——调整次数越多，真实（预期实盘）Sharpe 相对回测 Sharpe 被压缩得越狠。
 
-本仓库 [scripts/evaluate_strategy.py](scripts/evaluate_strategy.py) 已实现 DSR（`deflated_sharpe`）。
+本仓库 [backtest/evaluate_strategy.py](backtest/evaluate_strategy.py) 已实现 DSR（`deflated_sharpe`）。
 
 **5. 样本量要与目标 Sharpe 匹配**
 

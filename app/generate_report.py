@@ -4,7 +4,7 @@
 
 既可作为模块被 UI 直接调用，也可在命令行运行：
 
-    python3 scripts/generate_report.py sh.600000 2006-01-01 2025-12-31 ema55
+    python3 app/generate_report.py sh.600000 2006-01-01 2025-12-31 ema55
 
 报告 Markdown 一律保存到对应策略文件夹
 ``strategy/<策略名>/<代码>_<策略>_<首日>_<末日>.md``，CLI 与 app 行为一致。
@@ -20,23 +20,22 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-if str(ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(ROOT / "scripts"))
+for path in (ROOT, ROOT / "app"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 import numpy as np
 import pandas as pd
 
-from query_a_share import query
+from backtest.query_a_share import query
 from backtest.backtest import backtest, DEFAULT_COMMISSION
-from evaluate_strategy import (
+from backtest.evaluate_strategy import (
     annualized_sharpe,
     deflated_sharpe,
     max_drawdown,
     max_drawdown_duration,
 )
-from test_strategy import test_lookahead_bias
+from backtest.test_strategy import test_lookahead_bias
 
 TRADING_DAYS = 252
 N_TRIALS = 1          # DSR 的独立试验次数：单一参数配置，未做参数搜索

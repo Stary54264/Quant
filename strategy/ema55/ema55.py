@@ -6,7 +6,7 @@
   - 收盘价上穿 EMA55：次日开盘买入（满仓持有）
   - 收盘价下穿 EMA55：次日开盘卖出（空仓）
 
-策略函数签名与 scripts/test_strategy.py 的前视偏差检查兼容：
+策略函数签名与 backtest/test_strategy.py 的前视偏差检查兼容：
 输入按日期升序的行情 DataFrame，返回与输入行数逐日对齐的每日仓位。
 """
 
