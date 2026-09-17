@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import streamlit as st
 
-from report_lib import (
+from generate_report import (
     BacktestInputError,
     build_report_markdown,
     list_strategies,
