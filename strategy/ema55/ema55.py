@@ -15,7 +15,7 @@ import pandas as pd
 from factor.ema import ema
 
 
-def ema_crossover(data: pd.DataFrame, span: int = 55) -> pd.Series:
+def ema55(data: pd.DataFrame, span: int = 55) -> pd.Series:
     """收盘价上穿 EMA55 则次日持仓，下穿则次日空仓。
 
     Parameters
