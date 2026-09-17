@@ -7,9 +7,9 @@
 | 目录 | 说明 |
 | --- | --- |
 | [data/](data/) | 回测数据。[data/backtest/a_share/](data/backtest/a_share/) 为 A 股 2006–2025 全市场日线固定快照（含退市股、7 只基准指数，无幸存者偏差），详见其 [README](data/backtest/a_share/README.md)。 |
-| [factor/](factor/) | 因子层：纯因子计算函数，输入价格序列、输出因子序列（如 [ema.py](factor/ema.py) 的指数移动平均线）。 |
-| [strategy/](strategy/) | 策略层：消费因子生成信号与每日目标仓位（如 [ema_crossover.py](strategy/ema_crossover.py)：收盘上穿 EMA 次日买入、下穿次日卖出）。 |
-| [backtest/](backtest/) | 回测层：[backtest.py](backtest/backtest.py) 把每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径（已含分红再投资）。 |
+| [factor/](factor/) | 因子层：纯因子计算函数，输入价格序列、输出因子序列，不含交易观点。 |
+| [strategy/](strategy/) | 策略层：消费因子生成信号与每日目标仓位，信号滞后一日生效。 |
+| [backtest/](backtest/) | 回测层：把每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径（已含分红再投资）。 |
 | [scripts/](scripts/) | 数据查询与策略评价工具：[query_a_share.py](scripts/query_a_share.py) 按代码与时间区间读取日线；[evaluate_strategy.py](scripts/evaluate_strategy.py) 输入日收益率序列计算年化夏普、Deflated Sharpe（Bailey & López de Prado, 2014）、最大回撤、最长回撤时间；[test_strategy.py](scripts/test_strategy.py) 用截断法检测前视偏差。 |
 
 ### 回测链路
@@ -17,32 +17,18 @@
 各层单向依赖，一份策略从数据到绩效的完整流程：
 
 ```
-query_a_share.query()                 数据层：date, open/high/low/close, pctChg, ...（前复权，含分红再投资）
+数据层：日线行情（date, open/high/low/close, pctChg, ...，前复权，含分红再投资）
         ↓
-factor.ema()                          因子层：EMA20 序列（因子只算数，不含交易观点）
+因子层：由价格序列计算因子，只算数，不含交易观点
         ↓
-strategy.ema_crossover()              策略层：信号 → 每日目标仓位（0/1，信号滞后一日生效）
+策略层：信号 → 每日目标仓位（0/1，信号滞后一日生效）
         ↓
-backtest.backtest()                   回测层：T+1 开盘市价成交，按换手扣手续费，输出逐日净值
+回测层：T+1 开盘市价成交，按换手扣手续费，输出逐日净值
         ↓
-evaluate_strategy.*                   评价层：Sharpe / DSR / 最大回撤 / 回撤持续时间
+评价层：Sharpe / DSR / 最大回撤 / 回撤持续时间
 ```
 
-```python
-import sys; sys.path.insert(0, "scripts")
-from query_a_share import query
-from strategy.ema_crossover import ema_crossover
-from backtest.backtest import backtest
-from evaluate_strategy import annualized_sharpe, max_drawdown
-
-data = query("sh.600000", "2006-01-01", "2025-12-31").reset_index(drop=True)
-result = backtest(data, ema_crossover(data, 20))      # T+1 开盘成交、扣费后的逐日明细
-
-print(annualized_sharpe(result["net_ret"]), max_drawdown(result["net_ret"]))
-print(result[["date", "position", "turnover", "net_ret", "nav"]].tail())
-```
-
-> `.claude/` 为 Claude Code 的本地配置与技能（如 factor-writer），不属于策略代码。
+> `.claude/` 为 Claude Code 的本地配置与技能，不属于策略代码。
 
 ## 要点
 
