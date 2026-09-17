@@ -4,8 +4,10 @@
 
 只支持本仓库报告生成器用到的 Markdown 子集：
 标题（#/##/###）、管道表格、无序列表、引用（>）、加粗（**）、空行。
-中文使用 reportlab 内置的 Adobe CID 字体 STSong-Light，无需在各操作系统
-上寻找或嵌入字体文件，macOS / Windows 均可正常显示。
+中文使用 reportlab 内置的 Adobe CID 字体 STSong-Light（宋体），ASCII
+字母与数字使用内置标准字体 Times-Roman（Times New Roman 同源字稿），
+均无需在各操作系统上寻找或嵌入字体文件，macOS / Windows 显示一致。
+中文与字母/数字交界处插入窄间距，避免两类字形挤在一起。
 """
 
 import html
@@ -26,8 +28,67 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-_FONT = "STSong-Light"
+_FONT = "STSong-Light"   # 中文：宋体
+_LATIN = "Times-Roman"   # ASCII 字母/数字：Times New Roman 同源字稿
+_LATIN_BOLD = "Times-Bold"
+# 中英/中数交界处的窄间距：Times 的不换行空格（约 0.25em，随字号缩放）
+_GAP = '<font name="Times-Roman">&#160;</font>'
+
 pdfmetrics.registerFont(UnicodeCIDFont(_FONT))
+# 中文没有独立粗体字稿：让 <b> 里的中文仍映射到 STSong-Light，避免找不到字体
+pdfmetrics.registerFontFamily(
+    _FONT, normal=_FONT, bold=_FONT, italic=_FONT, boldItalic=_FONT,
+)
+
+# 连续的 ASCII 可打印字符（字母、数字及报告里出现的 ASCII 标点/空格）
+_ASCII_RE = re.compile(r"([\x20-\x7e]+)")
+# 汉字（含部首/扩展 A/兼容表意文字）；全角标点不算汉字——它们字形自带留白
+_HAN_RE = re.compile(r"[⺀-⿰㐀-䶿一-鿿豈-﫿]")
+
+
+def _mix_fonts(text: str, bold: bool = False) -> str:
+    """ASCII 段套 Times，其余（汉字与中文标点）保留宋体。
+
+    仅在汉字与 ASCII 段交界处插入不换行窄间距；ASCII 段边缘原有的普通
+    空格被该间距取代，避免双重空隙。全角标点（（）：，等）两侧不加间距。
+    """
+    latin = _LATIN_BOLD if bold else _LATIN
+    tokens = [t for t in _ASCII_RE.split(text) if t != ""]
+    # kind: "latin" | "han"（非 ASCII 段，记录两端是否紧贴汉字）
+    segs: list[tuple[str, str, bool, bool]] = []
+    for idx, tok in enumerate(tokens):
+        if tok.isascii():
+            prev_non_ascii = idx > 0 and not tokens[idx - 1].isascii()
+            next_non_ascii = idx + 1 < len(tokens) and not tokens[idx + 1].isascii()
+            if prev_non_ascii:
+                tok = tok.lstrip(" \t")
+            if next_non_ascii:
+                tok = tok.rstrip(" \t")
+            if not tok:
+                # 夹在中文之间的纯空白（罕见）：保留一个窄间距
+                segs.append(("gap", _GAP, False, False))
+                continue
+            segs.append(("latin", f'<font name="{latin}">{tok}</font>', False, False))
+        else:
+            segs.append(("han", tok,
+                         bool(_HAN_RE.fullmatch(tok[0])),
+                         bool(_HAN_RE.fullmatch(tok[-1]))))
+
+    out = []
+    for idx, (kind, rendered, left_han, right_han) in enumerate(segs):
+        if kind == "gap":
+            out.append(rendered)
+            continue
+        if idx > 0:
+            prev = segs[idx - 1]
+            han_latin_boundary = (
+                (kind == "latin" and prev[0] == "han" and prev[3])
+                or (kind == "han" and left_han and prev[0] == "latin")
+            )
+            if han_latin_boundary:
+                out.append(_GAP)
+        out.append(rendered)
+    return "".join(out)
 
 _styles = {
     "h1": ParagraphStyle("h1", fontName=_FONT, fontSize=18, leading=24,
@@ -47,14 +108,20 @@ _styles = {
 
 
 def _inline(text: str) -> str:
-    """转义 HTML 特殊字符后还原 **加粗** 标记。"""
+    """转义 HTML 特殊字符，还原 **加粗**，并按字形分配中英文字体。"""
     text = html.escape(text)
-    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    # 捕获组 split：奇数段为 ** ** 内的粗体文本
+    parts = re.split(r"\*\*(.+?)\*\*", text)
+    out = []
+    for idx, part in enumerate(parts):
+        bold = idx % 2 == 1
+        rendered = _mix_fonts(part, bold=bold)
+        out.append(f"<b>{rendered}</b>" if bold else rendered)
+    return "".join(out)
 
 
 def _split_row(line: str) -> list[str]:
-    cells = [c.strip() for c in line.strip().strip("|").split("|")]
-    return [_inline(c) for c in cells]
+    return [c.strip() for c in line.strip().strip("|").split("|")]
 
 
 def _is_separator(cells: list[str]) -> bool:
@@ -66,9 +133,10 @@ def _table_widths(rows: list[list[str]], usable: float) -> list[float]:
     weights = [1.0] * max(len(r) for r in rows)
     for r in rows:
         for i, c in enumerate(r):
-            plain = re.sub(r"<[^>]+>", "", c)
+            n_gaps = c.count("&#160;")  # 交界处的窄间距
+            plain = re.sub(r"&[#a-zA-Z0-9]+;", "", re.sub(r"<[^>]+>", "", c))
             width = sum(2 if ord(ch) > 127 else 1 for ch in plain)
-            weights[i] = max(weights[i], width)
+            weights[i] = max(weights[i], width + 0.5 * n_gaps)
     total = sum(weights)
     return [usable * w / total for w in weights]
 
@@ -99,7 +167,7 @@ def markdown_to_pdf(markdown: str) -> bytes:
             while i < len(lines) and lines[i].lstrip().startswith("|"):
                 cells = _split_row(lines[i])
                 if not _is_separator(cells):
-                    rows.append(cells)
+                    rows.append([_inline(c) for c in cells])
                 i += 1
             if rows:
                 usable = A4[0] - 96
