@@ -6,7 +6,7 @@
 
 | 目录 | 说明 |
 | --- | --- |
-| [app/](app/) | 界面层：本地网页表单，输入代码、区间与策略后生成并弹窗展示回测报告（根目录的「启动回测.command」可双击启动）。 |
+| [app/](app/) | 界面层：本地网页表单，输入代码、区间与策略后生成并弹窗展示回测报告；内含 macOS 与 Windows 两个双击启动器。 |
 | [backtest/](backtest/) | 回测层：把每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径（已含分红再投资）。 |
 | [data/](data/) | 回测数据。[data/backtest/a_share/](data/backtest/a_share/) 为 A 股 2006–2025 全市场日线固定快照（含退市股、7 只基准指数，无幸存者偏差），详见其 [README](data/backtest/a_share/README.md)。 |
 | [factor/](factor/) | 因子层：纯因子计算函数，输入价格序列、输出因子序列，不含交易观点。 |
@@ -30,6 +30,24 @@
 ```
 
 > `.claude/` 为 Claude Code 的本地配置与技能，不属于策略代码。
+
+## 本地运行
+
+1. 安装 **Python 3.10+**（Windows 安装时勾选 *Add python.exe to PATH*）；
+2. clone 仓库后，在仓库根目录安装依赖：
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. 行情数据（两个 parquet 文件）不随 git 分发，需手动拷贝到：
+
+   ```
+   data/backtest/a_share/daily_stocks.parquet
+   data/backtest/a_share/daily_indices.parquet
+   ```
+
+4. 双击启动器：macOS 用 [app/启动回测-macOS.command](app/启动回测-macOS.command)（首次双击被拦截时，右键 → 打开），Windows 用 [app/启动回测-Windows.bat](app/启动回测-Windows.bat)；浏览器会自动打开页面。启动器会自检数据与依赖，缺失时给出提示。
 
 ## 要点
 
