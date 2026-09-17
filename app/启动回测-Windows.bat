@@ -2,10 +2,13 @@
 rem Windows launcher (double-click in Explorer).
 rem Switches to repo root, checks data and dependencies, then starts the app.
 
+rem Switch console to UTF-8 so the Chinese app name renders correctly
+chcp 65001 >nul
+
 rem Repo root = parent of this file's directory (app\)
 cd /d "%~dp0\.."
 
-echo === A-share backtest app (Windows) ===
+echo === 姜砚尊最聪明最帅 (Windows) ===
 
 rem 1. Check data files (not distributed via git; copy them manually)
 if not exist "data\backtest\a_share\daily_stocks.parquet" goto nodata

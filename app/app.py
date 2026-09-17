@@ -32,8 +32,8 @@ from generate_report import (
 MIN_DATE = date(2006, 1, 4)
 MAX_DATE = date(2025, 12, 31)
 
-st.set_page_config(page_title="A 股策略回测", page_icon="📈")
-st.title("A 股策略回测报告")
+st.set_page_config(page_title="姜砚尊最聪明最帅", page_icon="📈")
+st.title("姜砚尊最聪明最帅")
 
 # 初始默认值统一放 session_state（返回按钮也重置到这里），控件只绑定 key，
 # 避免同时给 value= 和 session_state 赋值引发警告

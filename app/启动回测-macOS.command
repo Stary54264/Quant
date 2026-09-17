@@ -5,7 +5,7 @@
 # 仓库根目录 = 本文件所在目录（app/）的上一级
 cd "$(dirname "$0")/.." || exit 1
 
-echo "=== A 股策略回测小程序 (macOS) ==="
+echo "=== 姜砚尊最聪明最帅 (macOS) ==="
 
 # 1. 检查数据文件（不随 git 分发，需手动拷贝）
 if [ ! -f "data/backtest/a_share/daily_stocks.parquet" ] || \
