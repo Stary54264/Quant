@@ -6,11 +6,11 @@
 
 | 目录 | 说明 |
 | --- | --- |
+| [backtest/](backtest/) | 回测层：把每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径（已含分红再投资）。 |
 | [data/](data/) | 回测数据。[data/backtest/a_share/](data/backtest/a_share/) 为 A 股 2006–2025 全市场日线固定快照（含退市股、7 只基准指数，无幸存者偏差），详见其 [README](data/backtest/a_share/README.md)。 |
 | [factor/](factor/) | 因子层：纯因子计算函数，输入价格序列、输出因子序列，不含交易观点。 |
-| [strategy/](strategy/) | 策略层：消费因子生成信号与每日目标仓位，信号滞后一日生效。 |
-| [backtest/](backtest/) | 回测层：把每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径（已含分红再投资）。 |
 | [scripts/](scripts/) | 数据查询与策略评价工具：[query_a_share.py](scripts/query_a_share.py) 按代码与时间区间读取日线；[evaluate_strategy.py](scripts/evaluate_strategy.py) 输入日收益率序列计算年化夏普、Deflated Sharpe（Bailey & López de Prado, 2014）、最大回撤、最长回撤时间；[test_strategy.py](scripts/test_strategy.py) 用截断法检测前视偏差。 |
+| [strategy/](strategy/) | 策略层：消费因子生成信号与每日目标仓位，信号滞后一日生效。每个策略单独一个子文件夹，内含策略代码与回测报告。 |
 
 ### 回测链路
 
