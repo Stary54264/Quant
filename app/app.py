@@ -22,7 +22,6 @@ import streamlit as st
 
 from generate_report import (
     BacktestInputError,
-    build_report_markdown,
     generate_report,
     list_strategies,
     report_filename,
@@ -98,16 +97,15 @@ if st.button("生成报告", type="primary"):
     else:
         try:
             with st.spinner("回测运行中，请稍候…"):
-                # 与 CLI 完全一致：分析并把 Markdown 报告存入对应策略文件夹
-                _, analysis = generate_report(
+                # 报告只在弹窗展示，不落盘；需要保存请在弹窗下载 PDF
+                markdown, analysis = generate_report(
                     code.strip().lower(),
                     start_date.isoformat(),
                     end_date.isoformat(),
                     strategy_name,
                 )
-                markdown = build_report_markdown(analysis)
                 pdf_bytes = markdown_to_pdf(markdown)
-                pdf_filename = report_filename(analysis).removesuffix(".md") + ".pdf"
+                pdf_filename = report_filename(analysis)
             show_report(markdown, pdf_bytes, pdf_filename)
         except BacktestInputError as exc:
             st.error(str(exc))
