@@ -26,6 +26,7 @@ from generate_report import (
     list_strategies,
     report_filename,
 )
+from report_chart import build_chart
 from report_pdf import markdown_to_pdf
 
 # 数据集覆盖的交易日范围（data/backtest/a_share，2006–2025 固定快照）
@@ -73,9 +74,17 @@ strategy_name = st.selectbox(
 
 
 @st.dialog("回测报告", width="large")
-def show_report(markdown: str, pdf_bytes: bytes, pdf_filename: str) -> None:
+def show_report(markdown: str, chart: bytes, pdf_bytes: bytes, pdf_filename: str) -> None:
     """弹窗中渲染报告并提供 PDF 下载；关闭弹窗用右上角的 ×。"""
-    st.markdown(markdown)
+    # 在占位符位置内联插入图表，其余部分正常渲染 Markdown
+    if "[[CHART]]" in markdown:
+        before, after = markdown.split("[[CHART]]", 1)
+        st.markdown(before)
+        st.image(chart, width="stretch")
+        if after.strip():
+            st.markdown(after)
+    else:
+        st.markdown(markdown)
     st.divider()
     st.download_button(
         "下载报告 (PDF)",
@@ -104,8 +113,9 @@ if st.button("生成报告", type="primary"):
                     end_date.isoformat(),
                     strategy_name,
                 )
-                pdf_bytes = markdown_to_pdf(markdown)
+                chart = build_chart(analysis)
+                pdf_bytes = markdown_to_pdf(markdown, chart)
                 pdf_filename = report_filename(analysis)
-            show_report(markdown, pdf_bytes, pdf_filename)
+            show_report(markdown, chart, pdf_bytes, pdf_filename)
         except BacktestInputError as exc:
             st.error(str(exc))

@@ -118,6 +118,7 @@ def run_analysis(
         "commission": commission,
         "data": data,
         "result": result,
+        "bench_result": benchmark,
         "strat_stats": _evaluate_returns(result["net_ret"]),
         "bench_stats": _evaluate_returns(benchmark["net_ret"]),
         "bias": bias,
@@ -170,6 +171,10 @@ def build_report_markdown(a: dict) -> str:
         f"> Deflated Sharpe 取 n_trials={N_TRIALS}（未做参数搜索）；",
         f"> 夏普口径：年化无风险利率 3%，一年 {TRADING_DAYS} 个交易日。",
         "",
+        "## 净值走势与仓位",
+        "",
+        "[[CHART]]",
+        "",
         "## 前视偏差检验（截断法）",
         "",
         f"- 方法：全量数据与截去最近 {TRUNCATION_DAYS} 个交易日的数据分别跑一次，逐日比较仓位",
@@ -211,6 +216,12 @@ def main() -> None:
 
     markdown, _ = generate_report(
         args.code, args.start_date, args.end_date, args.strategy,
+    )
+    # 终端无法内嵌图片：去掉图表节标题与占位符行
+    markdown = "\n".join(
+        line
+        for line in markdown.splitlines()
+        if line not in ("[[CHART]]", "## 净值走势与仓位")
     )
     print(markdown)
 

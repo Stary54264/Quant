@@ -20,7 +20,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
+    Image,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -141,8 +143,26 @@ def _table_widths(rows: list[list[str]], usable: float) -> list[float]:
     return [usable * w / total for w in weights]
 
 
-def markdown_to_pdf(markdown: str) -> bytes:
-    """把报告 Markdown 字符串渲染为 PDF，返回 PDF 字节内容。"""
+# Markdown 报告中的图片占位符（由报告生成器插入）
+_CHART_PLACEHOLDER = "[[CHART]]"
+
+
+def _chart_flowable(chart: bytes, usable_width: float) -> Image:
+    """按正文宽度等比缩放图片。"""
+    reader = ImageReader(io.BytesIO(chart))
+    width_px, height_px = reader.getSize()
+    return Image(
+        io.BytesIO(chart),
+        width=usable_width,
+        height=usable_width * height_px / width_px,
+    )
+
+
+def markdown_to_pdf(markdown: str, chart: bytes | None = None) -> bytes:
+    """把报告 Markdown 字符串渲染为 PDF，返回 PDF 字节内容。
+
+    报告中的 ``[[CHART]]`` 占位符会被替换为传入的图片；未传图片时跳过。
+    """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -158,6 +178,14 @@ def markdown_to_pdf(markdown: str) -> bytes:
 
         if not line:
             story.append(Spacer(1, 4))
+            i += 1
+            continue
+
+        # 图片占位符：替换为实际图表（无图则跳过）
+        if line == _CHART_PLACEHOLDER:
+            if chart:
+                story.append(_chart_flowable(chart, A4[0] - 96))
+                story.append(Spacer(1, 8))
             i += 1
             continue
 
