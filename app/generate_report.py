@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""通用回测报告生成：给定标的、区间与策略，调用评价/检验函数生成 Markdown 报告。
+"""通用回测报告生成：给定标的、区间与策略，调用评价/检验函数生成 Markdown
+报告，每份报告同时附带一张净值/仓位图（PNG）。
 
-既可作为模块被 UI 直接调用，也可在命令行运行（报告 Markdown 直接打印到
-标准输出，不落盘；app 在弹窗中展示并提供 PDF 下载）：
+既可作为模块被 UI 直接调用（弹窗展示 md 与图，并提供 PDF 下载），也可在
+命令行运行（报告 Markdown 直接打印到标准输出，不落盘，图表节在终端剔除）：
 
     python3 app/generate_report.py sh.600000 2006-01-01 2025-12-31 ema55
 
@@ -13,6 +14,7 @@
 
 import argparse
 import importlib
+import io
 import sys
 from datetime import date
 from pathlib import Path
@@ -24,6 +26,14 @@ for path in (ROOT, ROOT / "app"):
 
 import numpy as np
 import pandas as pd
+
+import matplotlib
+
+matplotlib.use("Agg")  # 无头环境不需要图形界面
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+from matplotlib.patches import Patch
 
 from backtest.query_a_share import query
 from backtest.backtest import backtest, DEFAULT_COMMISSION
@@ -40,6 +50,52 @@ N_TRIALS = 1          # DSR 的独立试验次数：单一参数配置，未做�
 TRUNCATION_DAYS = 10  # 前视偏差截断测试截去的最近交易日数
 
 STRATEGY_DIR = ROOT / "strategy"
+
+# Markdown 报告中的图表占位符（UI/PDF 据此插入图片）
+CHART_PLACEHOLDER = "[[CHART]]"
+
+# 图表中文字体候选（各平台自带字体，无需额外安装）
+_CJK_FONT_CANDIDATES = [
+    "/System/Library/Fonts/Supplemental/Songti.ttc",       # macOS 宋体
+    "/System/Library/Fonts/Supplemental/SIMSUN.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/System/Library/Fonts/PingFang.ttc",
+    "C:/Windows/Fonts/msyh.ttc",                           # Windows 微软雅黑
+    "C:/Windows/Fonts/simhei.ttf",                         # Windows 黑体
+    "C:/Windows/Fonts/simsun.ttc",                         # Windows 宋体
+]
+
+
+def _setup_cjk_font() -> bool:
+    """注册首个可用的中文字体；成功返回 True。"""
+    for font_path in _CJK_FONT_CANDIDATES:
+        if not Path(font_path).exists():
+            continue
+        try:
+            font_manager.fontManager.addfont(font_path)
+            name = font_manager.FontProperties(fname=font_path).get_name()
+            plt.rcParams["font.family"] = name
+            plt.rcParams["axes.unicode_minus"] = False
+            return True
+        except Exception:
+            continue
+    return False
+
+
+_CJK = _setup_cjk_font()
+
+_CHART_LABELS = (
+    {"nav": "净值", "position": "仓位", "strategy": "策略",
+     "benchmark": "买入持有"}
+    if _CJK
+    else {"nav": "NAV", "position": "Position", "strategy": "Strategy",
+          "benchmark": "Buy & Hold"}
+)
+
+# PNG 尺寸（PDF 与 UI 均按容器宽度缩放）
+_CHART_WIDTH = 7.2   # inch，约 A4 正文宽
+_CHART_HEIGHT = 3.6
+_CHART_DPI = 200
 
 
 class BacktestInputError(ValueError):
@@ -85,6 +141,60 @@ def _evaluate_returns(returns) -> dict:
         "最大回撤": max_drawdown(r),
         "最长回撤天数": max_drawdown_duration(r),
     }
+
+
+def build_chart(analysis: dict) -> bytes:
+    """绘制净值/仓位图：时间横轴，左轴净值（策略/买入持有），右轴仓位（半透明柱状）。"""
+    result, benchmark_result = analysis["result"], analysis["bench_result"]
+
+    fig, ax_nav = plt.subplots(figsize=(_CHART_WIDTH, _CHART_HEIGHT), dpi=_CHART_DPI)
+    ax_pos = ax_nav.twinx()
+
+    # 背景仓位柱放在净值轴下层，半透明
+    ax_pos.set_zorder(ax_nav.get_zorder() - 1)
+    ax_nav.patch.set_visible(False)
+    ax_pos.bar(
+        result["date"], result["position"],
+        width=1.0, color="#4c78a8", alpha=0.18, align="center",
+    )
+
+    (line_strat,) = ax_nav.plot(
+        result["date"], result["nav"],
+        color="#c0392b", linewidth=1.4, label=_CHART_LABELS["strategy"],
+    )
+    (line_bench,) = ax_nav.plot(
+        benchmark_result["date"], benchmark_result["nav"],
+        color="#2c3e50", linewidth=1.2, linestyle="--",
+        label=_CHART_LABELS["benchmark"],
+    )
+
+    ax_nav.set_ylabel(_CHART_LABELS["nav"])
+    ax_pos.set_ylabel(_CHART_LABELS["position"])
+    ax_pos.set_ylim(0, 1.15)
+    ax_pos.set_yticks([0, 0.5, 1])
+    if _CJK:
+        ax_pos.set_yticklabels(["0%", "50%", "100%"])
+    ax_nav.grid(True, axis="y", linewidth=0.5, alpha=0.4)
+    ax_nav.margins(x=0.01)
+
+    # 合并两轴图例（仓位用半透明色块表示）
+    handles = [
+        line_strat,
+        line_bench,
+        Patch(facecolor="#4c78a8", alpha=0.35, label=_CHART_LABELS["position"]),
+    ]
+    ax_nav.legend(handles=handles, loc="upper left", framealpha=0.85, fontsize=9)
+
+    # x 轴按年标注，避免长区间标签重叠
+    ax_nav.xaxis.set_major_locator(mdates.YearLocator(2))
+    ax_nav.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    fig.autofmt_xdate(rotation=0)
+
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=_CHART_DPI)
+    plt.close(fig)
+    return buf.getvalue()
 
 
 def run_analysis(
@@ -173,7 +283,7 @@ def build_report_markdown(a: dict) -> str:
         "",
         "## 净值走势与仓位",
         "",
-        "[[CHART]]",
+        CHART_PLACEHOLDER,
         "",
         "## 前视偏差检验（截断法）",
         "",
@@ -201,8 +311,12 @@ def generate_report(
     strategy_name: str,
     commission: float = DEFAULT_COMMISSION,
 ) -> tuple[str, dict]:
-    """通用入口：接收标的、区间、策略名，返回 (Markdown 文本, 分析结果)，不落盘。"""
+    """通用入口：接收标的、区间、策略名，返回 (Markdown 文本, 分析结果)，不落盘。
+
+    每份报告必带图表，PNG 字节放在 ``analysis["chart"]`` 中。
+    """
     analysis = run_analysis(code, start_date, end_date, strategy_name, commission)
+    analysis["chart"] = build_chart(analysis)
     return build_report_markdown(analysis), analysis
 
 
@@ -221,7 +335,7 @@ def main() -> None:
     markdown = "\n".join(
         line
         for line in markdown.splitlines()
-        if line not in ("[[CHART]]", "## 净值走势与仓位")
+        if line not in (CHART_PLACEHOLDER, "## 净值走势与仓位")
     )
     print(markdown)
 

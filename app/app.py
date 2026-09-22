@@ -26,7 +26,6 @@ from generate_report import (
     list_strategies,
     report_filename,
 )
-from report_chart import build_chart
 from report_pdf import markdown_to_pdf
 
 # 数据集覆盖的交易日范围（data/backtest/a_share，2006–2025 固定快照）
@@ -113,7 +112,7 @@ if st.button("生成报告", type="primary"):
                     end_date.isoformat(),
                     strategy_name,
                 )
-                chart = build_chart(analysis)
+                chart = analysis["chart"]
                 pdf_bytes = markdown_to_pdf(markdown, chart)
                 pdf_filename = report_filename(analysis)
             show_report(markdown, chart, pdf_bytes, pdf_filename)
