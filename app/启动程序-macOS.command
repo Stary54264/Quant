@@ -28,8 +28,16 @@ else
   exit 1
 fi
 
-# 3. 缺依赖时自动安装
-if ! "$PY" -c "import streamlit, duckdb, pyarrow, pandas, numpy, scipy, reportlab, matplotlib" 2>/dev/null; then
+# 3. 缺依赖时自动安装。
+#    不逐个列举三方包，而是直接导入程序模块：程序自身的 import 链覆盖全部
+#    运行时依赖，以后新增依赖只需改 requirements.txt，本启动器不用动。
+if ! "$PY" -c "
+import sys
+sys.path.insert(0, 'app')
+import streamlit
+import generate_report
+import report_pdf
+" 2>/dev/null; then
   echo "首次运行，正在安装依赖（pip install -r requirements.txt）…"
   "$PY" -m pip install -r requirements.txt || {
     echo "[错误] 依赖安装失败，请手动执行：$PY -m pip install -r requirements.txt"

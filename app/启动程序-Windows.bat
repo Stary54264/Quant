@@ -38,8 +38,10 @@ if not defined PY (
   exit /b 1
 )
 
-rem 3. Install dependencies on first run
-%PY% -c "import streamlit, duckdb, pyarrow, pandas, numpy, scipy, reportlab, matplotlib" >nul 2>nul
+rem 3. Install dependencies on first run. Import the app modules themselves:
+rem    their import chain covers every runtime dependency, so adding a new
+rem    dependency only requires updating requirements.txt -- not this launcher.
+%PY% -c "import sys; sys.path.insert(0, 'app'); import streamlit; import generate_report; import report_pdf" >nul 2>nul
 if errorlevel 1 (
   echo Installing dependencies on first run: pip install -r requirements.txt
   %PY% -m pip install -r requirements.txt

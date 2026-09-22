@@ -46,7 +46,7 @@
    data/backtest/a_share/daily_indices.parquet
    ```
 
-4. 双击启动器：macOS 用 [app/启动回测-macOS.command](app/启动回测-macOS.command)（首次双击被拦截时，右键 → 打开），Windows 用 [app/启动回测-Windows.bat](app/启动回测-Windows.bat)；浏览器会自动打开页面。启动器会自检数据与依赖，缺失时给出提示。
+4. 双击启动器：macOS 用 [app/启动程序-macOS.command](app/启动程序-macOS.command)（首次双击被拦截时，右键 → 打开），Windows 用 [app/启动程序-Windows.bat](app/启动程序-Windows.bat)；浏览器会自动打开页面。启动器会自检数据与依赖（通过导入程序模块检查，不列举具体包），缺失时给出提示。
 
 ## TODO
 

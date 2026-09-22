@@ -1,13 +1,14 @@
 # 回测小程序运行所需依赖（在本机验证通过的版本，Python 3.10/3.11/3.12）
-streamlit==1.64.0
-duckdb==1.5.5
-pyarrow==25.0.1
+# 运行时依赖（小程序与回测）。各包由 app/ 与 backtest/ 的代码直接导入：
+streamlit==1.64.0    # app/app.py
+duckdb==1.5.5        # backtest/query_a_share.py（duckdb 原生读 parquet）
 pandas==2.2.3
 numpy==2.2.6
-scipy==1.15.0
-reportlab==5.0.1
-matplotlib==3.10.8
+scipy==1.15.0        # backtest/evaluate_strategy.py
+reportlab==5.0.1     # app/report_pdf.py
+matplotlib==3.10.8   # app/generate_report.py（图表）
 
 # 仅在重新抓取/更新行情数据时才需要，运行小程序和回测不用装：
 # baostock
 # tqdm
+# pyarrow            # pandas to_parquet 输出 parquet 时需要
