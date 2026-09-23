@@ -20,6 +20,10 @@ reports/
 *.parquet
 *.h5
 
+# 美股原始抽取文件（数个 GB，仅构建数据集时使用；securities.csv 不受影响）
+data/backtest/crsp_*.csv
+data/backtest/us/raw_*.csv
+
 # Jupyter
 .ipynb_checkpoints/
 
