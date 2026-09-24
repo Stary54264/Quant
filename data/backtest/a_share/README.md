@@ -35,7 +35,7 @@
 | `volume` | BIGINT | 成交量（股） |
 | `amount` | DOUBLE | 成交额（元） |
 | `turn` | DOUBLE | 换手率（%） |
-| `pctChg` | DOUBLE | 日涨跌幅（%，总回报口径；数值与前复权 `close` 的逐日比一致） |
+| `pctChg` | DOUBLE | 日涨跌幅（%） |
 
 `pctChg` 与 OHLC 同为前复权（总回报）口径：交易所官方涨跌幅在除权除息日以
 除权参考价为前收，分红、送转效应已包含在内，与前复权收盘比恒等（全表 1500 万
