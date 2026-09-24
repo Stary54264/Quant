@@ -61,12 +61,16 @@ def main() -> None:
         raise FileNotFoundError(RAW_DIR)
     frames, n_missing_adj = [], 0
     for path in sorted(RAW_DIR.glob("*.csv")):
+        if path.name.startswith("_") or path.stem.endswith(".adj"):
+            continue                                 # 跳过 adj/状态文件
         ticker = path.stem
         adj_path = RAW_DIR / f"{ticker}.adj.csv"
         if not adj_path.exists():
             n_missing_adj += 1
             continue
         frames.append(build_one(ticker, path, adj_path))
+    if not frames:
+        raise RuntimeError(f"{RAW_DIR} 下没有可构建的 ticker 数据")
     if n_missing_adj:
         print(f"跳过缺 adjclose 的 ticker：{n_missing_adj}")
     out = pd.concat(frames, ignore_index=True)
