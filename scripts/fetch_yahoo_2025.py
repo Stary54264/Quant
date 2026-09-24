@@ -5,12 +5,17 @@
 目的：在取得权威 2025 CRSP 抽取前，提供一份覆盖"现有在市股 + 2025 IPO"的
 2025 日线 raw 数据；退市 ticker 的退市前历史 Yahoo 通常保留。
 
-输入：ticker 清单文件（默认 /tmp/ticker_master.txt，每行一个 ticker）
+输入：ticker 清单文件（默认 /tmp/ticker_master.txt，每行一个 ticker）；
+      可选 --priority 文件中的 ticker 排到最前（如 2025 IPO 清单）。
 输出：data/backtest/yahoo2025/<TICKER>.csv（date,open,high,low,close,volume）
-      data/backtest/yahoo2025/_status.csv（每个 ticker 的抓取结果）
+      data/backtest/yahoo2025/<TICKER>.adj.csv（date,adjclose）
+      data/backtest/yahoo2025/_results.jsonl（增量结果，每行一个 ticker）
 
-特性：多线程抓取（每线程独立 requests.Session），429/5xx 指数退避重试，
-query1/query2 主机轮换；已存在的 ticker 文件跳过（断点续抓）。
+限速：自适应 15 分钟滑动窗口（配额约 30–50 次/15 分钟）；窗口内请求数达到
+BURST 即排队等最旧请求出窗。收到 429（或封禁期的慢速 drip 硬超时）后
+**完全静默**（继续发请求只会刷新封禁计时），暂停时长 300s 起逐次递增；
+连续封禁超 MAX_429 轮则熔断退出。已存在的 ticker 文件跳过（断点续抓，
+重跑不重复计数）。
 """
 
 import argparse
@@ -28,6 +33,7 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "data" / "backtest" / "yahoo2025"
+RAW_DIR = OUT_DIR          # adjclose 明细与主文件同目录
 
 P1 = int(datetime.datetime(2024, 12, 20).timestamp())
 P2 = int(datetime.datetime(2026, 1, 6).timestamp())
@@ -36,25 +42,61 @@ UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/
 MAX_TRIES = 25
 NY = ZoneInfo("America/New_York")
 
-# 自适应限速：任意两次请求至少间隔 SPACING 秒；收到 429 后全体暂停 PAUSE 秒
-SPACING = 3.0
-PAUSE = 180.0
+# 自适应限速：15 分钟滑动窗口，最多 BURST 次成功/发出的请求；429 后全体静默
+WINDOW = 900.0
+BURST = 28
+PAUSE0 = 300.0
+PAUSE_MAX = 900.0
+MAX_429 = 4               # 封禁轮数上限（每轮静默 5~15 分钟），超过即熔断
 _lock = threading.Lock()
-_next_slot = 0.0
+_stamps: list[float] = []  # 近期请求时刻（滑动窗口）
 _pause_until = 0.0
 _tls = threading.local()
 
 
 def wait_slot() -> None:
-    global _next_slot, _pause_until
+    """全局节奏：静默期全员等待；窗口满则等最旧请求出窗。"""
     while True:
         with _lock:
             now = time.time()
-            wait = max(_pause_until, _next_slot) - now
-            if wait <= 0:
-                _next_slot = now + SPACING
-                return
-        time.sleep(min(wait, 30) + 0.05)
+            if _pause_until > now:
+                wait = _pause_until - now
+            else:
+                old = [t for t in _stamps if now - t < WINDOW]
+                _stamps[:] = old
+                if len(old) < BURST:
+                    _stamps.append(now)
+                    return
+                wait = old[0] + WINDOW - now
+        time.sleep(min(max(wait, 0.2), 60) + 0.05)
+
+
+def note_pause(seconds: float) -> None:
+    global _pause_until
+    with _lock:
+        _pause_until = max(_pause_until, time.time() + seconds)
+
+
+def http_get(url: str, deadline: float = 45.0) -> requests.Response:
+    """带**硬墙钟截止**的 GET。封禁期 Yahoo 会接受连接后慢速 drip 甚至完全
+    不发字节，requests 的 timeout 只管相邻字节间隔，可能无限挂死；用独立
+    线程执行、join 超时即抛 Timeout（悬挂的守护线程随后由 GC/进程退出回收）。"""
+    box: dict = {}
+
+    def work() -> None:
+        try:
+            box["r"] = session().get(url, timeout=(10, 15))
+        except Exception as e:  # 交回主线程按原逻辑分类
+            box["e"] = e
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    t.join(deadline)
+    if "r" in box:
+        return box["r"]
+    if "e" in box:
+        raise box["e"]
+    raise requests.Timeout(f"hard deadline {deadline:.0f}s")
 
 
 def session() -> requests.Session:
@@ -70,10 +112,9 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
     if path.exists():
         return ticker, "skip", 0, ""
 
-    global _pause_until
     last_note = ""
     n_429 = 0
-    MAX_429 = 6          # 连续封禁暂停次数上限，超过即放弃（避免无限挂死）
+    pause = PAUSE0
     attempt = 0
     while attempt < MAX_TRIES:
         host = HOSTS[attempt % 2]
@@ -81,17 +122,27 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
                f"?period1={P1}&period2={P2}&interval=1d&events=history")
         try:
             wait_slot()
-            r = session().get(url, timeout=30)
-            if r.status_code in (429, 502, 503, 504):
+            try:
+                r = http_get(url)
+            except requests.Timeout:
+                # 慢速 drip 与 429 同属封禁信号：完全静默
+                n_429 += 1
+                last_note = f"drip-timeout x{n_429}"
+                if n_429 > MAX_429:
+                    return ticker, "error", 0, last_note
+                note_pause(pause)
+                pause = min(pause * 1.5, PAUSE_MAX)
+                continue
+            if r.status_code == 429:
+                n_429 += 1
+                last_note = f"HTTP 429 x{n_429}"
+                if n_429 > MAX_429:
+                    return ticker, "error", 0, last_note
+                note_pause(pause)        # 完全静默，不刷新封禁计时
+                pause = min(pause * 1.5, PAUSE_MAX)
+                continue                 # 静默不消耗硬错误轮数
+            if r.status_code in (502, 503, 504):
                 last_note = f"HTTP {r.status_code}"
-                if r.status_code == 429:
-                    n_429 += 1
-                    if n_429 > MAX_429:
-                        return ticker, "error", 0, f"HTTP 429 x{n_429}"
-                    with _lock:
-                        _pause_until = time.time() + PAUSE
-                    # 429 暂停等待，不消耗硬错误轮数
-                    continue
                 time.sleep(min(2.0 ** attempt, 20))
                 attempt += 1
                 continue
@@ -147,43 +198,52 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
     return ticker, "error", 0, note
 
 
+def load_tickers(path: str) -> list[str]:
+    p = Path(path)
+    return p.read_text().split() if p.exists() else []
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tickers", default="/tmp/ticker_master.txt")
+    ap.add_argument("--priority", default="/tmp/ticker_ipo2025.txt",
+                    help="优先抓取的 ticker 清单（默认 2025 IPO 清单）")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
 
-    tickers = Path(args.tickers).read_text().split()
+    tickers = load_tickers(args.tickers)
+    pri = [t for t in load_tickers(args.priority) if t in tickers]
+    pri_set = set(pri)
+    ordered = pri + [t for t in tickers if t not in pri_set]
     if args.limit:
-        tickers = tickers[:args.limit]
+        ordered = ordered[:args.limit]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    todo = [t for t in tickers if not (OUT_DIR / f"{t}.csv").exists()]
-    print(f"待抓 {len(todo):,} / 总计 {len(tickers):,}，{args.workers} 线程", flush=True)
+    todo = [t for t in ordered if not (OUT_DIR / f"{t}.csv").exists()]
+    print(f"待抓 {len(todo):,} / 总计 {len(ordered):,}（优先 {len(pri):,}），"
+          f"{args.workers} 线程，窗口 {int(WINDOW)}s/{BURST}", flush=True)
     stats = {"ok": 0, "skip": 0, "empty": 0, "error": 0}
+    results_path = OUT_DIR / "_results.jsonl"
     t0 = time.time()
+    rc = 0
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
         futures = {ex.submit(fetch, t): t for t in todo}
-        results = []
         for i, fut in enumerate(as_completed(futures), 1):
             res = fut.result()
-            results.append(res)
+            with results_path.open("a") as fh:
+                fh.write(json.dumps({"ticker": res[0], "status": res[1],
+                                     "rows": res[2], "note": res[3]}) + "\n")
             stats[res[1]] += 1
-            if i % 100 == 0 or i == len(todo):
+            if res[1] == "error":
+                rc = 1
+            if i % 25 == 0 or i == len(todo):
                 rate = i / max(time.time() - t0, 1)
-                print(f"  {i:,}/{len(todo):,} | {rate:.1f} ticker/s | {stats}", flush=True)
+                print(f"  {i:,}/{len(todo):,} | {rate*60:.0f}/h | {stats}",
+                      flush=True)
 
-    # 合并已有的 skip 状态，写 _status.csv
-    rows_status = results
-    if not todo:
-        rows_status = [(t, "skip", 0, "") for t in tickers]
-    with (OUT_DIR / "_status.csv").open("w", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(["ticker", "status", "rows", "note"])
-        w.writerows(rows_status)
     print("done:", stats, f"{(time.time()-t0)/60:.1f} min")
-    return 0 if stats["error"] == 0 else 1
+    return rc
 
 
 if __name__ == "__main__":

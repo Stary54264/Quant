@@ -33,6 +33,7 @@ def backtest(
     data: pd.DataFrame,
     position: pd.Series,
     commission: float = DEFAULT_COMMISSION,
+    na_open: str = "error",
 ) -> pd.DataFrame:
     """运行逐日回测，返回成交、收益、成本与净值明细。
 
@@ -46,6 +47,14 @@ def backtest(
         0/1 分别表示空仓/满仓，也支持任意分数仓位（如 0.5 半仓）。
     commission : float, default 0.001
         单边手续费率（10bp），按成交金额（换仓率）收取，买卖均收。
+    na_open : {"error", "close"}, default "error"
+        开盘价缺失行的处理（美股存在当日无开盘成交记录的情形）：
+
+        - ``"error"``：直接报错（A 股口径，无此类行）；
+        - ``"close"``：以当日 ``close`` 作为成交/估值价——有成交但开盘无
+          报价记录时相当于延迟到收盘成交；当日零成交（``close`` 为做市商
+          报价）时仓位变动按报价计入，属已知近似。真实的"盘中首笔成交价"
+          需要逐笔（TAQ）数据，日线源不提供。
 
     Returns
     -------
@@ -65,14 +74,22 @@ def backtest(
         raise ValueError(f"data 行数({len(data)}) 与 position 长度({len(position)}) 不一致")
     if not (0 <= commission < 0.01):
         raise ValueError(f"commission 应为 [0, 0.01) 内的小数，收到：{commission}")
+    if na_open not in ("error", "close"):
+        raise ValueError(f"na_open 应为 'error'/'close'，收到：{na_open}")
 
     out = pd.DataFrame({"date": data["date"].to_numpy()})
     out["position"] = np.asarray(position, dtype=float)
 
     open_ = pd.to_numeric(data["open"], errors="coerce")
     if open_.isna().any():
-        bad = out["date"][open_.isna()].tolist()
-        raise ValueError(f"存在开盘价缺失的交易日，无法按开盘价成交：{bad[:5]}")
+        if na_open == "error":
+            bad = out["date"][open_.isna()].tolist()
+            raise ValueError(f"存在开盘价缺失的交易日，无法按开盘价成交：{bad[:5]}")
+        fill = open_.fillna(pd.to_numeric(data["close"], errors="coerce"))
+        if fill.isna().any():
+            bad = out["date"][fill.isna()].tolist()
+            raise ValueError(f"存在 open/close 均缺失的交易日，无法估值：{bad[:5]}")
+        open_ = fill
 
     # 开盘到开盘的标的收益；最后一日无次日开盘，记 0
     asset_ret = (open_.shift(-1) / open_ - 1).fillna(0.0).to_numpy()
