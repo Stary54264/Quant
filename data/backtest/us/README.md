@@ -23,35 +23,23 @@
 |---|---|
 | `daily_stocks.parquet` | 全部普通股日线（含退市），ZSTD 压缩，按 `code, date` 排序 |
 | `daily_indices.parquet` | 4 只基准指数日线，ZSTD 压缩，按 `code, date` 排序 |
-| `securities.csv` | 全部历史标的的对照/生命周期表（含未纳入的非普通股，`included` 标志区分） |
-| `delisting_returns.csv` | 退市期间收益表（成品 `pctChg` 已在末日并入，本表完整另存） |
-
-`securities.csv` 字段：`code, permno, ticker, name, exchcd, shrcd, first_date,
-last_date, active, included, dlstcd`。交易所代码 `exchcd`：1=NYSE，2=NYSE
-MKT/AMEX，3=Nasdaq，4=NYSE Arca，5=其他。
-
-`delisting_returns.csv` 字段：`code, date, dlret_pct`，每证券一行。
 
 ## 字段
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `date` | TIMESTAMP | 交易日 |
-| `code` | VARCHAR | 证券代码（PERMNO 永久标识，不随改名、ticker 回收变化） |
+| `code` | VARCHAR | 证券代码（永久标识，不随改名、ticker 回收变化） |
 | `open` / `high` / `low` / `close` | DOUBLE | 前复权开高低收（美元） |
 | `volume` | BIGINT | 成交量（股）；零成交但有有效报价的日子保留记录、成交量为 0 |
 | `amount` | DOUBLE | 成交额（美元） |
 | `turn` | DOUBLE | 换手率（%） |
 | `pctChg` | DOUBLE | 日涨跌幅（%） |
 
-除退市末日外，`pctChg` 与前复权 `close` 的逐日比一致；退市末日因收盘价无法包含
-退市期间收益而存在缺口，退市收益见 `delisting_returns.csv`。官方日收益缺失时用
-相邻保留日的前复权收盘比补算，不可信的极端值与首个交易日留空。
+`pctChg` 与 OHLC 同为前复权（总回报）口径；除退市末日外，与前复权 `close`
+的逐日比一致。
 
-零成交但有有效买卖报价的日子保留记录，是相邻交易日收益的计价基准。同一交易日有
-多个公司行为时合并计算；公司行为落在无行情占位日时，调整自动并入下一有效交易日。
-
-**开盘价缺失时保留 NULL，不做填充**，共约 51 万行。
+无任何有效信息的日子无记录；个别历史字段缺失为 NULL，其中开盘价缺失不做填充。
 
 ## 代码目录
 

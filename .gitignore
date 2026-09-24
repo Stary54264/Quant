@@ -27,6 +27,9 @@ data/backtest/us/raw_*.csv
 # Yahoo 2025 逐 ticker raw（上万个小 CSV，仅构建时使用；如需跟踪可删此行）
 data/backtest/yahoo2025/
 
+# 美股构建过程文件（最终只保留 parquet；securities/delisting 表仅构建时需要）
+data/backtest/us/*.csv
+
 # Jupyter
 .ipynb_checkpoints/
 
