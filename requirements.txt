@@ -12,3 +12,4 @@ matplotlib==3.10.8   # app/generate_report.py（图表）
 # baostock
 # tqdm
 # pyarrow            # pandas to_parquet 输出 parquet 时需要
+# curl_cffi          # scripts/fetch_yahoo_2025.py：h2 + Chrome 指纹抓取

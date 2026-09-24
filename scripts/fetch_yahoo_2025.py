@@ -11,11 +11,12 @@
       data/backtest/yahoo2025/<TICKER>.adj.csv（date,adjclose）
       data/backtest/yahoo2025/_results.jsonl（增量结果，每行一个 ticker）
 
-限速：自适应 15 分钟滑动窗口（配额约 30–50 次/15 分钟）；窗口内请求数达到
-BURST 即排队等最旧请求出窗。收到 429（或封禁期的慢速 drip 硬超时）后
-**完全静默**（继续发请求只会刷新封禁计时），暂停时长 300s 起逐次递增；
-连续封禁超 MAX_429 轮则熔断退出。已存在的 ticker 文件跳过（断点续抓，
-重跑不重复计数）。
+限速：自适应 15 分钟滑动窗口；窗口内请求数达到 BURST 即排队等最旧请求出窗。
+Yahoo 按 HTTP/TLS 指纹区分通道：HTTP/1.1（requests/普通 curl）几乎一律 429，
+**HTTP/2 + Chrome 指纹**（curl_cffi impersonate）按浏览器配额放行，故必须经
+curl_cffi 访问。收到 429（或慢速 drip 硬超时）后**完全静默**（继续发请求只会
+刷新封禁计时），暂停时长 300s 起逐次递增；连续封禁超 MAX_429 轮则熔断退出。
+已存在的 ticker 文件跳过（断点续抓，重跑不重复计数）。
 """
 
 import argparse
@@ -28,7 +29,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import requests
+from curl_cffi import requests
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,9 +43,15 @@ UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/
 MAX_TRIES = 25
 NY = ZoneInfo("America/New_York")
 
-# 自适应限速：15 分钟滑动窗口，最多 BURST 次成功/发出的请求；429 后全体静默
+
+class HardTimeout(Exception):
+    """http_get 超过硬墙钟截止（慢速 drip / 连接挂死）。"""
+
+# 自适应限速：15 分钟滑动窗口，最多 BURST 次请求；相邻请求至少 SPACING 秒；
+# 429 后全体静默
 WINDOW = 900.0
-BURST = 28
+BURST = 180
+SPACING = 1.0
 PAUSE0 = 300.0
 PAUSE_MAX = 900.0
 MAX_429 = 4               # 封禁轮数上限（每轮静默 5~15 分钟），超过即熔断
@@ -55,7 +62,7 @@ _tls = threading.local()
 
 
 def wait_slot() -> None:
-    """全局节奏：静默期全员等待；窗口满则等最旧请求出窗。"""
+    """全局节奏：静默期全员等待；窗口满则等最旧请求出窗；相邻请求拉开间隔。"""
     while True:
         with _lock:
             now = time.time()
@@ -64,11 +71,14 @@ def wait_slot() -> None:
             else:
                 old = [t for t in _stamps if now - t < WINDOW]
                 _stamps[:] = old
-                if len(old) < BURST:
+                if len(old) < BURST and (not old or now - old[-1] >= SPACING):
                     _stamps.append(now)
                     return
-                wait = old[0] + WINDOW - now
-        time.sleep(min(max(wait, 0.2), 60) + 0.05)
+                if len(old) >= BURST:
+                    wait = old[0] + WINDOW - now
+                else:
+                    wait = SPACING - (now - old[-1])
+        time.sleep(min(max(wait, 0.1), 60) + 0.05)
 
 
 def note_pause(seconds: float) -> None:
@@ -96,13 +106,15 @@ def http_get(url: str, deadline: float = 45.0) -> requests.Response:
         return box["r"]
     if "e" in box:
         raise box["e"]
-    raise requests.Timeout(f"hard deadline {deadline:.0f}s")
+    raise HardTimeout(f"hard deadline {deadline:.0f}s")
 
 
 def session() -> requests.Session:
     if not getattr(_tls, "s", None):
-        _tls.s = requests.Session()
-        _tls.s.headers.update({"User-Agent": UA, "Accept": "application/json"})
+        # impersonate 同时给出 h2 与 Chrome 的 TLS/JA3 指纹——Yahoo 的 h1 通道
+        # 对未认证请求近乎全量 429，h2+Chrome 指纹才按浏览器配额放行
+        _tls.s = requests.Session(impersonate="chrome")
+        _tls.s.headers.update({"Accept": "application/json"})
     return _tls.s
 
 
@@ -124,7 +136,7 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
             wait_slot()
             try:
                 r = http_get(url)
-            except requests.Timeout:
+            except HardTimeout:
                 # 慢速 drip 与 429 同属封禁信号：完全静默
                 n_429 += 1
                 last_note = f"drip-timeout x{n_429}"
@@ -146,8 +158,16 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
                 time.sleep(min(2.0 ** attempt, 20))
                 attempt += 1
                 continue
-            if r.status_code == 404:
-                return ticker, "empty", 0, "404"
+            if r.status_code in (400, 404):
+                # 证券不存在 / 区间内无数据（chart.error 会写明），不可重试
+                note = f"HTTP {r.status_code}"
+                try:
+                    ce = (r.json().get("chart") or {}).get("error")
+                    if ce:
+                        note = ce.get("description", note)[:100]
+                except ValueError:
+                    pass
+                return ticker, "empty", 0, note
             if r.status_code != 200:
                 last_note = f"HTTP {r.status_code}"
                 time.sleep(2 + attempt)
@@ -190,7 +210,7 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
             if not rows:
                 return ticker, "empty", 0, ""
             return ticker, "ok", len(rows), f"{rows[0][0]}..{rows[-1][0]}"
-        except (requests.RequestException, ValueError, KeyError) as e:
+        except (requests.RequestsError, ValueError, KeyError) as e:
             last_note = type(e).__name__ + ":" + str(e)[:80]
             time.sleep(1 + attempt * 2)
             attempt += 1
