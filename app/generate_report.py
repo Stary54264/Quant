@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.patches import Patch
 
-from backtest.query_a_share import query
+from backtest.query import query
 from backtest.backtest import backtest, DEFAULT_COMMISSION
 from backtest.evaluate_strategy import (
     annualized_sharpe,
@@ -50,6 +50,9 @@ N_TRIALS = 1          # DSR 的独立试验次数：单一参数配置，未做�
 TRUNCATION_DAYS = 10  # 前视偏差截断测试截去的最近交易日数
 
 STRATEGY_DIR = ROOT / "strategy"
+
+# 行情数据文件（市场选择功能上线前固定为 A 股；切换市场只需改这里的路径）
+STOCK_DATA_PATH = ROOT / "data" / "backtest" / "a_share" / "daily_stocks.parquet"
 
 # Markdown 报告中的图表占位符（UI/PDF 据此插入图片）
 CHART_PLACEHOLDER = "[[CHART]]"
@@ -208,7 +211,7 @@ def run_analysis(
     module = _load_strategy(strategy_name)
     strategy_label = strategy_name
 
-    data = query(code, start_date, end_date, kind="stock")
+    data = query(STOCK_DATA_PATH, code, start_date, end_date)
     if data.empty:
         raise BacktestInputError(
             f"{code} 在 {start_date} ~ {end_date} 内无行情记录（请检查代码与区间）"

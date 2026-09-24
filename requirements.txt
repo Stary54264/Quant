@@ -1,7 +1,7 @@
 # 回测小程序运行所需依赖（在本机验证通过的版本，Python 3.10/3.11/3.12）
 # 运行时依赖（小程序与回测）。各包由 app/ 与 backtest/ 的代码直接导入：
 streamlit==1.64.0    # app/app.py
-duckdb==1.5.5        # backtest/query_a_share.py（duckdb 原生读 parquet）
+duckdb==1.5.5        # backtest/query.py（duckdb 原生读 parquet）
 pandas==2.2.3
 numpy==2.2.6
 scipy==1.15.0        # backtest/evaluate_strategy.py

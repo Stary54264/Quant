@@ -1,51 +1,48 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""读取指定美股标的在给定时间区间内的日线数据。
+"""统一行情读取：所有市场（A 股、美股及后续新增数据源）共用同一读取方法。
+
+约定各数据源产出同构文件（列名、顺序、类型一致），区别只在文件路径——
+路径由调用方给定，本模块不绑定任何市场或目录：
+
+    date, code, open, high, low, close, volume, amount, turn, pctChg
 
 用法：
-    from query_us import query
+    from backtest.query import query
 
-    df = query("us.14593", "2020-01-01", "2020-12-31")           # 个股
-    df = query("us.sp500", "2015-01-01", "2015-06-30", "index")  # 指数
+    df = query("data/backtest/a_share/daily_stocks.parquet",
+               "sh.600000", "2020-01-01", "2020-12-31")
+
+个股与指数、历史快照与后续实时数据只是不同的数据文件，调用方传对应路径即可。
 """
-
-from pathlib import Path
 
 import duckdb
 import pandas as pd
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "backtest" / "us"
-_PATHS = {
-    "stock": DATA_DIR / "daily_stocks.parquet",
-    "index": DATA_DIR / "daily_indices.parquet",
-}
-
 
 def query(
+    path: str,
     code: str,
     start_date: str,
     end_date: str,
-    kind: str = "stock",
 ) -> pd.DataFrame:
-    """读取单只标的在 [start_date, end_date] 内的日线数据。
+    """从指定数据文件中读取单只标的在 [start_date, end_date] 内的日线数据。
 
     Parameters
     ----------
+    path : str
+        数据文件路径（parquet），如某市场的 ``daily_stocks.parquet`` 或
+        ``daily_indices.parquet``。
     code : str
-        证券代码，如 ``us.14593``（个股，PERMNO 永久稳定）或指数代码。
+        证券代码，如 ``sh.600000``、``us.14593`` 或指数代码。
     start_date, end_date : str
         起止日期，``YYYY-MM-DD`` 格式，区间两端均包含。
-    kind : {"stock", "index"}, default "stock"
-        标的类型：``"stock"`` 查个股（含退市股），``"index"`` 查基准指数。
 
     Returns
     -------
     pd.DataFrame
         按日期升序排列；查无此标的或区间内无行情时返回空 DataFrame。
     """
-    if kind not in _PATHS:
-        raise ValueError(f"kind 只能是 'stock' 或 'index'，收到：{kind!r}")
-
     con = duckdb.connect()
     try:
         df = con.execute(
@@ -56,7 +53,7 @@ def query(
             ORDER BY date
             """,
             {
-                "path": str(_PATHS[kind]),
+                "path": str(path),
                 "code": code,
                 "start_date": start_date,
                 "end_date": end_date,
