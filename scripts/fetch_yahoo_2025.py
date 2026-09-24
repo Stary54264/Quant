@@ -37,7 +37,7 @@ MAX_TRIES = 25
 NY = ZoneInfo("America/New_York")
 
 # 自适应限速：任意两次请求至少间隔 SPACING 秒；收到 429 后全体暂停 PAUSE 秒
-SPACING = 2.2
+SPACING = 3.0
 PAUSE = 180.0
 _lock = threading.Lock()
 _next_slot = 0.0
@@ -73,6 +73,7 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
     global _pause_until
     last_note = ""
     n_429 = 0
+    MAX_429 = 6          # 连续封禁暂停次数上限，超过即放弃（避免无限挂死）
     attempt = 0
     while attempt < MAX_TRIES:
         host = HOSTS[attempt % 2]
@@ -85,9 +86,11 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
                 last_note = f"HTTP {r.status_code}"
                 if r.status_code == 429:
                     n_429 += 1
+                    if n_429 > MAX_429:
+                        return ticker, "error", 0, f"HTTP 429 x{n_429}"
                     with _lock:
                         _pause_until = time.time() + PAUSE
-                    # 429 不消耗尝试轮数
+                    # 429 暂停等待，不消耗硬错误轮数
                     continue
                 time.sleep(min(2.0 ** attempt, 20))
                 attempt += 1
@@ -147,7 +150,7 @@ def fetch(ticker: str) -> tuple[str, str, int, str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tickers", default="/tmp/ticker_master.txt")
-    ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
 
@@ -167,7 +170,7 @@ def main() -> int:
             res = fut.result()
             results.append(res)
             stats[res[1]] += 1
-            if i % 200 == 0 or i == len(todo):
+            if i % 100 == 0 or i == len(todo):
                 rate = i / max(time.time() - t0, 1)
                 print(f"  {i:,}/{len(todo):,} | {rate:.1f} ticker/s | {stats}", flush=True)
 
