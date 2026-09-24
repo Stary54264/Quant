@@ -8,21 +8,30 @@
     daily_stocks.parquet   10 列，与 a_share 的 parquet 逐列一致
     securities.csv         全部 PERMNO 的对照/生命周期表
 
-口径：
-    - 价格用源数据自带的事件乘数调整（乘子法，不用收益反推价格）：
-      * 同一交易日多个分布行时，facpr 相加（复合比例 = 1/(1+Σfacpr)，
-        不是各因子相乘）；
-      * facpr=0 为现金分红除息日标记，价格不调，分红只体现在 pctChg；
-      * 事件可能落在无行情占位行（prc=0、vol=-99）。乘数链在全部日历日
-        上 cumprod，占位日的事件自动并入下一有效交易日（该日不输出数据）；
-    - 因而 close 是"价格口径"（拆股/合股/送股已调，不含现金分红）；
-      pctChg 是总回报口径（含现金分红），除息日与 close/前收−1 天然不同；
+口径（与 A 股数据集对齐：OHLC 与 pctChg 同为总回报口径，数值一致）：
+    - open/high/low/close 为前复权价。逐日链因子 total_day = event_day/div_day
+      （财富因子的作用方向与前复权链比相反），cumprod 后以末日为锚：
+      * 价格事件（拆股、合股、送股）坚持用源数据事件乘数，不用收益反推：
+        同一交易日多个分布行时 facpr 相加，事件比例 = 1/(1+Σfacpr)（不是
+        各因子相乘）；事件可能落在无行情占位行（prc=0、vol=-99），乘数链
+        在全部日历日上 cumprod，占位日的事件自动并入下一有效交易日；
+      * facpr=0 为现金分红除息日标记，事件乘数为 1。现金分红金额在抽取中
+        没有独立列，分红乘数仅在 facpr 显式非空的"分布事件日"上由官方日
+        收益的恒等式残差提取（RET 仅 6 位小数，非事件日残差噪声太大，不
+        能逐日提取）：
+            分红乘数 = (1+RET) / [(原始价比) × (1+Σfacpr)]
+        非分布事件日强制为 1；
+    - pctChg 为日涨跌幅（%，总回报口径）：取自源数据官方日收益 RET；官方
+      值缺失（-66 等）时用相邻保留日的前复权收盘比补算（超 ±400% 视为
+      不可信，留空），首日有官方 RET 照常输出；
+    - 退市末日：pctChg 在有官方 RET 时并入退市期间收益 DLRET
+      ((1+RET)(1+DLRET)-1)，保证持有到退市的总回报完整；DLRET 仅取严格
+      位于 (-1,1) 的小数（-88/-55/-66 等整数为缺失码），并另行导出
+      delisting_returns.csv；
+    - open 缺失（源记 0，多为盘中才出现第一笔交易）时**不做填充**，保留
+      NULL——不用前收盘伪造；日线源不含盘中第一笔价；
     - 仅保留普通股（CRSP share code 首位为 1；其他标的仍记入 securities.csv，
       included=False）；无任何有效行情的占位日不输出；
-    - open 缺失（源记 0，多为盘中恢复交易）用前一有效交易日调整后收盘价
-      填充，首日无前收则用当日收盘价；
-    - 退市末日：pctChg 并入 DLRET（仅取 (-1,1) 内的有效小数，如雷曼 -0.6；
-      -55/-66 等整数为缺失码，不并入）；
     - prc 为负表示数值是买卖报价均值（可能零成交），取绝对值；
     - volume 为原始成交量；amount = |prc| × volume；turn = vol/(shrout×1000)×100。
 
@@ -69,9 +78,12 @@ DTYPES = {
     "facpr": "float64",
 }
 
-# 收益缺失/不可信码：pctChg 缺这些值时改用相邻调整后收盘价补算
+# 日收益缺失码：置 NaN 后改用相邻保留日的前复权收盘比补算
 MISSING_RETS = (-77.0, -99.0, -66.0)
 DERIVE_BOUND = 4.0          # 补算收益超 ±400% 视为不可信，留空
+# 分红乘数的可信区间（价格事件已由 facpr 处理，单日分红率不会极端）
+DIV_FACTOR_MIN, DIV_FACTOR_MAX = 0.1, 10.0
+DIV_EPS = 1e-9              # 偏离 1 小于此值视为浮点噪声，归一为 1
 # 退市收益仅接受严格位于 (-1,1) 内的小数（整数是缺失码）
 DLRET_MIN, DLRET_MAX = -1.0, 1.0
 
@@ -119,14 +131,17 @@ def aggregate_days(df: pd.DataFrame) -> pd.DataFrame:
 
     无行情占位行（prc NaN）也保留在结果中——其 sum_facpr 上的事件要进入
     乘数链并 carry 到下一有效日，有效与否用 prc 是否缺失判断。
+
+    另输出 n_facpr（当日 facpr 显式非空行数）：全 NaN 求和同样为 0，必须靠
+    它区分"现金分红除息日（facpr 显式 =0）"与"无事件日"。
     """
     df = df.sort_values(["permno", "date"])
     # last 自动跳过 NaN：同日"占位行 + 有效行"取到有效行情
-    agg = {col: "last" for col in df.columns
-           if col not in ("permno", "date", "facpr")}
-    agg["facpr"] = "sum"       # 无事件（全 NaN）求和为 0；多分布相加
-    out = df.groupby(["permno", "date"], sort=True).agg(agg).reset_index()
-    return out.rename(columns={"facpr": "sum_facpr"})
+    kwargs = {col: (col, "last") for col in df.columns
+              if col not in ("permno", "date", "facpr")}
+    kwargs["sum_facpr"] = ("facpr", "sum")
+    kwargs["n_facpr"] = ("facpr", "count")
+    return df.groupby(["permno", "date"], sort=True).agg(**kwargs).reset_index()
 
 
 def build_securities(days: pd.DataFrame) -> pd.DataFrame:
@@ -153,38 +168,78 @@ def build_securities(days: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+def build_delisting(days: pd.DataFrame) -> pd.DataFrame:
+    """退市期间收益表：每只有退市记录的证券一行。
+
+    源数据把 DLRET 作为证券级常量填在该证券的每一条行情行上，故按 PERMNO
+    取值（任意行）并以其最后有效交易日为日期。仅接受严格位于 (-1,1) 的
+    小数（-88/-55/-66 等整数为缺失码）。成品 pctChg 在退市末日已并入该值，
+    本表另行完整保留。
+    """
+    valid_days = days[days["prc"].notna()]
+    g = valid_days.groupby("permno").agg(
+        dlret=("dlret", "last"),
+        date=("date", "last"),
+    )
+    g = g[g["dlret"].between(DLRET_MIN, DLRET_MAX, inclusive="neither")]
+    g = g.reset_index()
+    g["code"] = "us." + g["permno"].astype(str)
+    g["dlret_pct"] = g["dlret"] * 100.0
+    out = g[["code", "date", "dlret_pct"]]
+    return out.sort_values("code").reset_index(drop=True)
+
+
 def build_stocks(days: pd.DataFrame) -> pd.DataFrame:
-    """过滤普通股，按事件乘链重建价格，返回 10 列成品。"""
+    """过滤普通股，按"事件乘数 × 分红乘数"链重建总回报前复权价，返回成品。"""
     days = days[days["shrcd"].str.startswith("1")].copy()
     permno_all = days["permno"]
 
-    # 乘数链在全部日历日（含无行情占位日）上 cumprod，占位日事件得以 carry
+    # --- 事件日乘数（全部日历日，含占位日，使占位日事件得以 carry）---
     denom = 1.0 + days["sum_facpr"]
     n_bad_denom = int((denom <= 0).sum())
     if n_bad_denom:
         print(f"警告：Σfacpr 使 1+Σ<=0 的日 {n_bad_denom} 个，事件跳过")
-    day_factor = pd.Series(
+    event_day = pd.Series(
         np.where(denom > 0, 1.0 / denom, 1.0), index=days.index)
-    cumfac_all = day_factor.groupby(permno_all).cumprod()
 
     n_carry = int(((days["prc"].isna()) & (days["sum_facpr"] != 0.0)).sum())
     print(f"占位日上的事件并入下一有效日：{n_carry} 个")
 
+    # --- 分红日乘数（仅有效行情日、且当日有显式分布事件 facpr 时才提取）---
+    # RET 只有 6 位小数，非事件日"RET/价格商"的残差噪声达 1e-7~1e-4，故
+    # 不能逐日提取；n_facpr>0（facpr 显式非空）是"当日有分布事件"的权威
+    # 开关：现金分红日 facpr 显式 =0，拆股日非 0，残差给出事件净效应
+    valid_all = days["prc"].notna()
+    v = days[valid_all]
+    raw_prev = v["prc"].groupby(v["permno"]).shift(1)
+    raw_ratio = v["prc"] / raw_prev
+    implied = (1.0 + v["ret"]) / (raw_ratio * (1.0 + v["sum_facpr"]))
+    has_dist = v["n_facpr"] > 0
+    ok = (has_dist & v["ret"].notna() & raw_prev.notna()
+          & implied.between(DIV_FACTOR_MIN, DIV_FACTOR_MAX))
+    div_day = pd.Series(1.0, index=v.index)
+    div_day[ok] = implied[ok]
+    div_day = div_day.where(div_day.sub(1.0).abs() >= DIV_EPS, 1.0)
+    days["div_day"] = 1.0
+    days.loc[valid_all, "div_day"] = div_day
+    n_div = int((div_day != 1.0).sum())
+    n_dist = int(has_dist.sum())
+    print(f"显式分布事件日 {n_dist:,}，其中现金分红等残差乘数调整：{n_div:,}")
+
+    # --- 总乘数链在全部日历日上 cumprod ---
+    # 链比的作用方向与财富因子相反：拆股日 event_day=1/(1+facpr) 使 scale 在
+    # 事件日反向乘 (1+facpr)；分红日 d>1 使 scale 反向乘 d。故：
+    #     total_day = event_day / div_day
+    # 保证 raw_ratio / total_day = RET
+    total_day = event_day / days["div_day"]
+    cumfac_all = total_day.groupby(permno_all).cumprod()
+
     # 只输出有有效行情的日子
-    valid = days["prc"].notna()
-    days = days[valid].reset_index(drop=True)
-    cumfac = cumfac_all[valid].reset_index(drop=True)
+    days = days[valid_all].reset_index(drop=True)
+    cumfac = cumfac_all[valid_all].reset_index(drop=True)
     permno = days["permno"]
 
-    # 退市末日（每组最后一有效行）与有效退市收益
-    grp_index = permno.groupby(permno).cumcount()
-    grp_size = permno.groupby(permno).transform("size")
-    is_last = grp_index + 1 == grp_size
-    valid_dl = days["dlret"].notna() & days["dlret"].between(
-        DLRET_MIN, DLRET_MAX, inclusive="neither")
-    del grp_index, grp_size
-
-    # 前复权：以最后有效日为锚（末日乘数 1，历史价格按事件缩小）
+    # 前复权：以最后有效日为锚（末日乘数 1，历史价格按累计乘数缩小）
     scale = cumfac.groupby(permno).transform("last") / cumfac
     adj_close = days["prc"] * scale
     prev_close = adj_close.groupby(permno).shift(1)
@@ -194,13 +249,10 @@ def build_stocks(days: pd.DataFrame) -> pd.DataFrame:
     out["date"] = pd.to_datetime(days["date"])
     out["code"] = "us." + permno.astype(str)
 
-    # open 源缺失 → 前一有效交易日调整后收盘价；首日 → 当日收盘价
-    missing_open = days["open"].isna()
-    open_fill = prev_close.where(prev_close.notna(), adj_close)
-    out["open"] = np.where(missing_open, open_fill, days["open"] * scale)
-    n_open_fill = int(missing_open.sum())
-    n_firstday_fill = int((missing_open & prev_close.isna()).sum())
-    print(f"open 缺失填充：{n_open_fill:,} 行（其中首日用当日收盘价：{n_firstday_fill} 行）")
+    # open 源缺失不填充，保留 NULL（不用前收盘伪造盘中首笔）
+    out["open"] = days["open"] * scale
+    n_open_null = int(days["open"].isna().sum())
+    print(f"open 缺失保留 NULL：{n_open_null:,} 行")
 
     # high/low 偶发缺失 → 以当日有效价补（报价日通常只有报价）
     high = days["high"].where(days["high"].notna(), days["prc"])
@@ -216,18 +268,25 @@ def build_stocks(days: pd.DataFrame) -> pd.DataFrame:
     shares = days["shrout"] * 1000.0
     out["turn"] = np.where(shares > 0, vol / shares * 100.0, np.nan)
 
-    # pctChg 总回报口径；源缺失用相邻调整后收盘价补算，不可信则留空
-    pct = days["ret"].copy()
-    missing = pct.isna()
+    # pctChg 总回报口径：优先官方 RET；官方缺失用前复权收盘比补算，
+    # 超 ±DERIVE_BOUND 不可信留空（如停牌价 0.02 → 复牌 75.65）
     derived = adj_close / prev_close - 1.0
-    use_derived = missing & prev_close.notna() & (derived.abs() <= DERIVE_BOUND)
-    pct.loc[use_derived] = derived.loc[use_derived]
-    pct.loc[missing & ~use_derived] = np.nan
-    n_blank = int((missing & ~use_derived).sum())
-    print(f"pctChg 缺失补算：{int(use_derived.sum()):,} 行；不可信留空：{n_blank:,} 行")
+    fill_rows = (days["ret"].isna() & prev_close.notna()
+                 & derived.abs().le(DERIVE_BOUND))
+    pct = days["ret"].copy()
+    pct.loc[fill_rows] = derived.loc[fill_rows]
+    n_filled = int(fill_rows.sum())
+    n_blank = int(pct.isna().sum())
+    print(f"pctChg 官方缺失用前复权收盘比补算：{n_filled:,} 行；留空：{n_blank:,} 行")
 
     out["pctChg"] = pct * 100.0
-    # 退市末日并入退市收益
+
+    # 退市末日并入退市期间收益（持有到退市的总回报才完整）
+    grp_index = permno.groupby(permno).cumcount()
+    grp_size = permno.groupby(permno).transform("size")
+    is_last = grp_index + 1 == grp_size
+    valid_dl = days["dlret"].notna() & days["dlret"].between(
+        DLRET_MIN, DLRET_MAX, inclusive="neither")
     can_merge = is_last & valid_dl & days["ret"].notna()
     merged = ((1.0 + days["ret"]) * (1.0 + days["dlret"]) - 1.0) * 100.0
     out.loc[can_merge, "pctChg"] = merged.loc[can_merge]
@@ -247,11 +306,14 @@ def main() -> None:
           f"其中有效行情日 {int(days['prc'].notna().sum()):,}")
 
     securities = build_securities(days)
+    delisting = build_delisting(days)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     securities.to_csv(OUT_DIR / "securities.csv", index=False)
     print(f"securities.csv：{len(securities):,} 只标的，"
           f"其中普通股 {int(securities['included'].sum()):,} 只、"
           f"在市 {int(securities['active'].sum()):,} 只")
+    delisting.to_csv(OUT_DIR / "delisting_returns.csv", index=False)
+    print(f"delisting_returns.csv：{len(delisting):,} 行退市期间收益")
 
     stocks = build_stocks(days)
     del days

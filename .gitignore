@@ -24,6 +24,9 @@ reports/
 data/backtest/crsp_*.csv
 data/backtest/us/raw_*.csv
 
+# Yahoo 2025 逐 ticker raw（上万个小 CSV，仅构建时使用；如需跟踪可删此行）
+data/backtest/yahoo2025/
+
 # Jupyter
 .ipynb_checkpoints/
 
