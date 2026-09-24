@@ -211,7 +211,7 @@ def run_analysis(
     module = _load_strategy(strategy_name)
     strategy_label = strategy_name
 
-    data = query(STOCK_DATA_PATH, code, start_date, end_date)
+    data = query(STOCK_DATA_PATH, [code], start_date, end_date)
     if data.empty:
         raise BacktestInputError(
             f"{code} 在 {start_date} ~ {end_date} 内无行情记录（请检查代码与区间）"
