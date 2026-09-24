@@ -28,8 +28,8 @@
       ((1+RET)(1+DLRET)-1)，保证持有到退市的总回报完整；DLRET 仅取严格
       位于 (-1,1) 的小数（-88/-55/-66 等整数为缺失码），并另行导出
       delisting_returns.csv；
-    - open 缺失（源记 0，多为盘中才出现第一笔交易）时**不做填充**，保留
-      NULL——不用前收盘伪造；日线源不含盘中第一笔价；
+    - open 缺失（源记 0，多为盘中才出现第一笔交易）时，以**当日高低均值**
+      填充——盘中价格不含隔夜跳空，优于用前收盘；
     - 仅保留普通股（CRSP share code 首位为 1；其他标的仍记入 securities.csv，
       included=False）；无任何有效行情的占位日不输出；
     - prc 为负表示数值是买卖报价均值（可能零成交），取绝对值；
@@ -249,17 +249,18 @@ def build_stocks(days: pd.DataFrame) -> pd.DataFrame:
     out["date"] = pd.to_datetime(days["date"])
     out["code"] = "us." + permno.astype(str)
 
-    # open 源缺失不填充，保留 NULL（不用前收盘伪造盘中首笔）
-    out["open"] = days["open"] * scale
-    n_open_null = int(days["open"].isna().sum())
-    print(f"open 缺失保留 NULL：{n_open_null:,} 行")
-
     # high/low 偶发缺失 → 以当日有效价补（报价日通常只有报价）
     high = days["high"].where(days["high"].notna(), days["prc"])
     low = days["low"].where(days["low"].notna(), days["prc"])
     out["high"] = high * scale
     out["low"] = low * scale
     out["close"] = adj_close
+
+    # open 源缺失 → 以当日高低均值填（盘中价、不含隔夜跳空；不用前收）
+    out["open"] = (days["open"] * scale).fillna(
+        (out["high"] + out["low"]) / 2.0)
+    n_open_fill = int(days["open"].isna().sum())
+    print(f"open 缺失用当日高低均值填充：{n_open_fill:,} 行")
     # 零成交报价日（行情有效、vol 缺失）成交量/额/换手记 0
     vol = days["vol"].fillna(0.0)
     out["volume"] = vol.round().astype("int64")
