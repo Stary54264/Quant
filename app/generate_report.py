@@ -7,7 +7,9 @@
 命令行运行（报告 Markdown 直接打印到标准输出，不落盘，图表节在终端剔除）：
 
     python3 app/generate_report.py sh.600000 2006-01-01 2025-12-31 ema55
+    python3 app/generate_report.py sh.000300 2006-01-04 2025-12-31 ema55
     python3 app/generate_report.py us.14593 2006-01-03 2024-12-31 ema55 -m us
+    python3 app/generate_report.py us.SPX 2006-01-03 2025-12-31 ema55 -m us
 
 策略发现约定：``strategy/<策略名>/`` 子文件夹的 ``__init__.py`` 暴露
 ``generate_position(data)`` 统一入口，并可提供 ``STRATEGY_RULES`` 元信息。
@@ -231,7 +233,9 @@ def run_analysis(
     module = _load_strategy(strategy_name)
     strategy_label = strategy_name
 
-    data = query(m.stocks_path, [code], start_date, end_date)
+    code = m.normalize_code(code)
+    is_index = m.is_index(code)
+    data = query(m.path_for(code), [code], start_date, end_date)
     if data.empty:
         raise BacktestInputError(
             f"{code} 在 {start_date} ~ {end_date} 内无行情记录（请检查代码与区间）"
@@ -247,6 +251,7 @@ def run_analysis(
         "code": code,
         "market": m.key,
         "market_name": m.display_name,
+        "kind": "指数" if is_index else "个股",
         "strategy_name": strategy_name,
         "strategy_label": strategy_label,
         "strategy_rules": getattr(module, "STRATEGY_RULES", []),
@@ -279,11 +284,14 @@ def build_report_markdown(a: dict) -> str:
     lines += [
         "- 成交时点：信号日 T 收盘确认，T+1 日开盘成交，持仓收益按开盘到开盘计",
         f"- 手续费：单边 {a['commission']:.2%}（{a['commission'] * 1e4:.0f} bp），按换手收取",
-        "- 价格口径：前复权，收益已含分红再投资",
+        ("- 价格口径：指数原始点位，指数无公司行为、不存在复权，"
+         "收益不含成分股分红" if a["kind"] == "指数"
+         else "- 价格口径：前复权，收益已含分红再投资"),
         "",
         "## 标的与区间",
         "",
         f"- 市场：{a['market_name']}",
+        f"- 类型：{a['kind']}",
         f"- 标的：{a['code']}",
         f"- 区间：{result['date'].iloc[0]} ~ {result['date'].iloc[-1]}",
         f"- 交易日数：{len(result)}",
@@ -350,7 +358,7 @@ def generate_report(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="生成指定标的、区间、策略的回测报告")
-    parser.add_argument("code", help="个股代码，精确匹配，如 sh.600000（美股如 us.14593）")
+    parser.add_argument("code", help="个股或基准指数代码，精确匹配，如 sh.600000、sh.000300（美股如 us.14593、us.SPX）")
     parser.add_argument("start_date", help="起始日期 YYYY-MM-DD")
     parser.add_argument("end_date", help="结束日期 YYYY-MM-DD")
     parser.add_argument("strategy", help="策略名（strategy/ 下的子文件夹名）")

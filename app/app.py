@@ -6,8 +6,9 @@
     streamlit run app/app.py
 或在 Finder / 资源管理器双击 app/ 下对应系统的「启动程序」启动器。
 
-操作：选择市场 → 输入精确个股代码 → 选择起止日期（日历）→ 选择策略 →
-生成报告，报告会在弹窗中直接渲染，并提供 PDF 下载；关闭弹窗点右上角的 ×。
+操作：选择市场 → 输入精确标的代码（个股或基准指数）→ 选择起止日期（日历）
+→ 选择策略 → 生成报告，报告会在弹窗中直接渲染，并提供 PDF 下载；
+关闭弹窗点右上角的 ×。
 """
 
 import sys
@@ -80,7 +81,7 @@ code = st.text_input(
     "个股代码",
     placeholder=f"如 {market.code_example}",
     key="code_input",
-    help="必须输入完整代码，不支持名称或模糊搜索；"
+    help="必须输入完整代码，不支持名称或模糊搜索；支持个股与基准指数；"
          f"代码对照见 {market.readme.relative_to(ROOT)}",
 )
 
@@ -142,7 +143,7 @@ if st.button("生成报告", type="primary"):
             with st.spinner("回测运行中，请稍候…"):
                 # 报告只在弹窗展示，不落盘；需要保存请在弹窗下载 PDF
                 markdown, analysis = generate_report(
-                    code.strip().lower(),
+                    code.strip(),
                     start_date.isoformat(),
                     end_date.isoformat(),
                     strategy_name,
