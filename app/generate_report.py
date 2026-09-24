@@ -7,6 +7,7 @@
 命令行运行（报告 Markdown 直接打印到标准输出，不落盘，图表节在终端剔除）：
 
     python3 app/generate_report.py sh.600000 2006-01-01 2025-12-31 ema55
+    python3 app/generate_report.py us.14593 2006-01-03 2024-12-31 ema55 -m us
 
 策略发现约定：``strategy/<策略名>/`` 子文件夹的 ``__init__.py`` 暴露
 ``generate_position(data)`` 统一入口，并可提供 ``STRATEGY_RULES`` 元信息。
@@ -35,6 +36,7 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.patches import Patch
 
+from markets import MARKETS, DEFAULT_MARKET, get_market
 from backtest.query import query
 from backtest.backtest import backtest, DEFAULT_COMMISSION
 from backtest.evaluate_strategy import (
@@ -51,8 +53,8 @@ TRUNCATION_DAYS = 10  # 前视偏差截断测试截去的最近交易日数
 
 STRATEGY_DIR = ROOT / "strategy"
 
-# 行情数据文件（市场选择功能上线前固定为 A 股；切换市场只需改这里的路径）
-STOCK_DATA_PATH = ROOT / "data" / "backtest" / "a_share" / "daily_stocks.parquet"
+# 默认市场的行情文件（保留作向后兼容别名；实际取数按 market 参数走注册表）
+STOCK_DATA_PATH = MARKETS[DEFAULT_MARKET].stocks_path
 
 # Markdown 报告中的图表占位符（UI/PDF 据此插入图片）
 CHART_PLACEHOLDER = "[[CHART]]"
@@ -103,6 +105,22 @@ _CHART_DPI = 200
 
 class BacktestInputError(ValueError):
     """用户输入有误（代码不存在、区间无行情、策略不符合约定等）。"""
+
+
+def _validate_market(key: str):
+    """校验市场已注册且数据齐全，返回 Market；否则抛 BacktestInputError。"""
+    try:
+        market = get_market(key)
+    except KeyError:
+        options = "、".join(MARKETS)
+        raise BacktestInputError(
+            f"未知市场 {key!r}，可选：{options}")
+    missing = [str(p) for p in (market.stocks_path, market.indices_path)
+               if not p.exists()]
+    if missing:
+        raise BacktestInputError(
+            f"{market.display_name}数据不完整，缺少：" + "；".join(missing))
+    return market
 
 
 def list_strategies() -> list[str]:
@@ -206,12 +224,14 @@ def run_analysis(
     end_date: str,
     strategy_name: str,
     commission: float = DEFAULT_COMMISSION,
+    market: str = DEFAULT_MARKET,
 ) -> dict:
     """跑通单标的单策略的完整分析，返回原始结果（逐日明细、指标、检验结果等）。"""
+    m = _validate_market(market)
     module = _load_strategy(strategy_name)
     strategy_label = strategy_name
 
-    data = query(STOCK_DATA_PATH, [code], start_date, end_date)
+    data = query(m.stocks_path, [code], start_date, end_date)
     if data.empty:
         raise BacktestInputError(
             f"{code} 在 {start_date} ~ {end_date} 内无行情记录（请检查代码与区间）"
@@ -225,6 +245,8 @@ def run_analysis(
 
     return {
         "code": code,
+        "market": m.key,
+        "market_name": m.display_name,
         "strategy_name": strategy_name,
         "strategy_label": strategy_label,
         "strategy_rules": getattr(module, "STRATEGY_RULES", []),
@@ -261,6 +283,7 @@ def build_report_markdown(a: dict) -> str:
         "",
         "## 标的与区间",
         "",
+        f"- 市场：{a['market_name']}",
         f"- 标的：{a['code']}",
         f"- 区间：{result['date'].iloc[0]} ~ {result['date'].iloc[-1]}",
         f"- 交易日数：{len(result)}",
@@ -313,27 +336,35 @@ def generate_report(
     end_date: str,
     strategy_name: str,
     commission: float = DEFAULT_COMMISSION,
+    market: str = DEFAULT_MARKET,
 ) -> tuple[str, dict]:
     """通用入口：接收标的、区间、策略名，返回 (Markdown 文本, 分析结果)，不落盘。
 
     每份报告必带图表，PNG 字节放在 ``analysis["chart"]`` 中。
     """
-    analysis = run_analysis(code, start_date, end_date, strategy_name, commission)
+    analysis = run_analysis(
+        code, start_date, end_date, strategy_name, commission, market)
     analysis["chart"] = build_chart(analysis)
     return build_report_markdown(analysis), analysis
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="生成指定标的、区间、策略的回测报告")
-    parser.add_argument("code", help="个股代码，精确匹配，如 sh.600000")
+    parser.add_argument("code", help="个股代码，精确匹配，如 sh.600000（美股如 us.14593）")
     parser.add_argument("start_date", help="起始日期 YYYY-MM-DD")
     parser.add_argument("end_date", help="结束日期 YYYY-MM-DD")
     parser.add_argument("strategy", help="策略名（strategy/ 下的子文件夹名）")
+    parser.add_argument("-m", "--market", default=DEFAULT_MARKET,
+                        help=f"市场（默认 {DEFAULT_MARKET}；美股填 us）")
     args = parser.parse_args()
 
-    markdown, _ = generate_report(
-        args.code, args.start_date, args.end_date, args.strategy,
-    )
+    try:
+        markdown, _ = generate_report(
+            args.code, args.start_date, args.end_date, args.strategy,
+            market=args.market,
+        )
+    except BacktestInputError as exc:
+        sys.exit(f"错误：{exc}")
     # 终端无法内嵌图片：去掉图表节标题与占位符行
     markdown = "\n".join(
         line

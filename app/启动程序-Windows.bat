@@ -10,16 +10,23 @@ cd /d "%~dp0\.."
 
 echo === 姜砚尊最聪明最帅 (Windows) ===
 
-rem 1. Check data files (not distributed via git; copy them manually)
-if not exist "data\backtest\a_share\daily_stocks.parquet" goto nodata
-if not exist "data\backtest\a_share\daily_indices.parquet" goto nodata
-goto findpy
+rem 1. Check data files (not distributed via git; any one complete market suffices)
+set "HAVE_A="
+set "HAVE_US="
+if exist "data\backtest\a_share\daily_stocks.parquet" if exist "data\backtest\a_share\daily_indices.parquet" set "HAVE_A=1"
+if exist "data\backtest\us\daily_stocks.parquet" if exist "data\backtest\us\daily_indices.parquet" set "HAVE_US=1"
+if defined HAVE_A goto findpy
+if defined HAVE_US goto findpy
+goto nodata
 
 :nodata
 echo.
-echo [ERROR] Data files not found. Please copy the two parquet files to:
+echo [ERROR] No market data found. Copy the two parquet files of either market to:
 echo   data\backtest\a_share\daily_stocks.parquet
 echo   data\backtest\a_share\daily_indices.parquet
+echo   or:
+echo   data\backtest\us\daily_stocks.parquet
+echo   data\backtest\us\daily_indices.parquet
 echo.
 pause
 exit /b 1

@@ -6,9 +6,9 @@
 
 | 目录 | 说明 |
 | --- | --- |
-| [app/](app/) | 界面层：本地网页表单，输入代码、区间与策略后生成并弹窗展示回测报告（报告不落盘，弹窗内可下载 PDF）；报告生成、PDF 渲染模块及 macOS / Windows 两个双击启动器均在该目录。 |
+| [app/](app/) | 界面层：本地网页表单，选择市场并输入代码、区间与策略后生成并弹窗展示回测报告（报告不落盘，弹窗内可下载 PDF）；报告生成、PDF 渲染模块及 macOS / Windows 两个双击启动器均在该目录。 |
 | [backtest/](backtest/) | 回测层：行情查询、回测引擎（每日仓位变成净值曲线——T 日收盘信号、T+1 日开盘按市价成交，按换手收取手续费；价格用前复权口径，已含分红再投资）、策略评价指标与前视偏差检验。 |
-| [data/](data/) | 回测数据。[data/backtest/a_share/](data/backtest/a_share/) 为 A 股 2006–2025 全市场日线固定快照（含退市股、7 只基准指数，无幸存者偏差），详见其 [README](data/backtest/a_share/README.md)；[data/backtest/us/](data/backtest/us/) 为美股 2006–2024 全市场日线快照（含退市股，2025 年数据与基准指数待补），详见其 [README](data/backtest/us/README.md)。 |
+| [data/](data/) | 回测数据。[data/backtest/a_share/](data/backtest/a_share/) 为 A 股 2006–2025 全市场日线固定快照（含退市股、7 只基准指数，无幸存者偏差），详见其 [README](data/backtest/a_share/README.md)；[data/backtest/us/](data/backtest/us/) 为美股 2006–2024 全市场日线快照（含退市股，4 只基准指数已含 2025 年，个股 2025 年数据待补），详见其 [README](data/backtest/us/README.md)。 |
 | [factor/](factor/) | 因子层：纯因子计算函数，输入价格序列、输出因子序列，不含交易观点。 |
 | [strategy/](strategy/) | 策略层：消费因子生成信号与每日目标仓位，信号滞后一日生效。每个策略单独一个子文件夹，内含策略代码。 |
 
@@ -39,19 +39,20 @@
    pip install -r requirements.txt
    ```
 
-3. 行情数据（parquet 文件）不随 git 分发，需手动拷贝到各自数据目录：
+3. 行情数据（parquet 文件）不随 git 分发，需手动拷贝到各自数据目录（任一市场的两个文件齐全即可运行）：
 
    ```
    data/backtest/a_share/daily_stocks.parquet
    data/backtest/a_share/daily_indices.parquet
    data/backtest/us/daily_stocks.parquet
+   data/backtest/us/daily_indices.parquet
    ```
 
 4. 双击启动器：macOS 用 [app/启动程序-macOS.command](app/启动程序-macOS.command)（首次双击被拦截时，右键 → 打开），Windows 用 [app/启动程序-Windows.bat](app/启动程序-Windows.bat)；浏览器会自动打开页面。启动器会自检数据与依赖（通过导入程序模块检查，不列举具体包），缺失时给出提示。
 
 ## TODO
 
-1. **完善美股数据**：美股 2006–2024 无幸存者偏差日线已建好，待补 2025 年数据与基准指数，并让查询、回测、UI 支持选择市场。
+1. **完善美股数据**：美股 2006–2024 无幸存者偏差日线与基准指数已建好，查询、回测、UI 均已支持选择市场，仅剩 2025 年个股数据待补。
 2. **加入更多策略**：扩展 `strategy/` 下的策略，策略的输入形式会更加多样——除了现有以单只股票代码为输入的策略，还可能有接收多只标的的投资组合策略，以及**不接收标的输入、由策略自行选股**的策略。调用与报告生成需要按策略声明的输入形式适配，UI 也相应支持不同的输入界面。
 3. **加入自动交易**：接入券商 API 的下单/撤单/持仓查询代码，并在 app 的 UI 中增加对应的自动交易功能（纸面交易与实盘分阶段实现）。
 4. **完善评价指标**：扩充策略评价体系（如胜率、盈亏比、Calmar/MAR、收益分布、滚动绩效、相对基准的超额收益与跟踪误差等），并同步进入报告与 UI。

@@ -7,13 +7,21 @@ cd "$(dirname "$0")/.." || exit 1
 
 echo "=== 姜砚尊最聪明最帅 (macOS) ==="
 
-# 1. 检查数据文件（不随 git 分发，需手动拷贝）
-if [ ! -f "data/backtest/a_share/daily_stocks.parquet" ] || \
-   [ ! -f "data/backtest/a_share/daily_indices.parquet" ]; then
+# 1. 检查数据文件（不随 git 分发，需手动拷贝；任一市场数据齐全即可）
+HAVE_A=0
+HAVE_US=0
+[ -f "data/backtest/a_share/daily_stocks.parquet" ] && \
+  [ -f "data/backtest/a_share/daily_indices.parquet" ] && HAVE_A=1
+[ -f "data/backtest/us/daily_stocks.parquet" ] && \
+  [ -f "data/backtest/us/daily_indices.parquet" ] && HAVE_US=1
+if [ "$HAVE_A" -eq 0 ] && [ "$HAVE_US" -eq 0 ]; then
   echo ""
-  echo "[错误] 未找到数据文件。请把两个 parquet 放到："
+  echo "[错误] 未找到任何市场的数据文件。请把任一市场的两个 parquet 放到："
   echo "  data/backtest/a_share/daily_stocks.parquet"
   echo "  data/backtest/a_share/daily_indices.parquet"
+  echo "  或："
+  echo "  data/backtest/us/daily_stocks.parquet"
+  echo "  data/backtest/us/daily_indices.parquet"
   echo ""
   read -r -p "按回车键退出…" _
   exit 1
